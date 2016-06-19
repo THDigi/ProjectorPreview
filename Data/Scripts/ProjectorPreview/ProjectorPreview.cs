@@ -1,36 +1,21 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Linq.Expressions;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
-using System.IO;
-using System.Timers;
-using ParallelTasks;
-using Sandbox.Common;
-using Sandbox.Common.Components;
 using Sandbox.Common.ObjectBuilders;
-using Sandbox.Common.ObjectBuilders.VRageData;
-using Sandbox.Definitions;
-using Sandbox.Engine;
-using Sandbox.Engine.Physics;
-using Sandbox.Engine.Multiplayer;
-using Sandbox.Game;
 using Sandbox.Game.Entities;
-using Sandbox.Game.Gui;
 using Sandbox.ModAPI;
-using Sandbox.ModAPI.Interfaces;
-using VRage.Common.Utils;
+using VRage.Game;
+using VRage.Game.ModAPI;
 using VRageMath;
-using VRage;
 using VRage.ObjectBuilders;
 using VRage.Game.Components;
 using VRage.ModAPI;
-using VRage.Utils;
-using Digi.Utils;
+
 using Ingame = Sandbox.ModAPI.Ingame;
+
+using Digi.Utils;
 
 namespace Digi.ProjectorPreview
 {
@@ -41,15 +26,27 @@ namespace Digi.ProjectorPreview
         
         public void Init()
         {
+            Log.Init();
             Log.Info("Initialized.");
             init = true;
         }
         
         protected override void UnloadData()
         {
-            Log.Info("Mod unloaded.");
+            try
+            {
+                if(init)
+                {
+                    init = false;
+                    Log.Info("Mod unloaded.");
+                }
+            }
+            catch(Exception e)
+            {
+                Log.Error(e);
+            }
+            
             Log.Close();
-            init = false;
         }
         
         public override void UpdateAfterSimulation()
@@ -230,7 +227,6 @@ namespace Digi.ProjectorPreview
         private float maxSize;
         private float deg = 0;
         private int skip = 9999; // execute first slow tick ASAP
-        private Dictionary<Vector3I, float> blockCache = null;
         
         public const float MAX_RANGE_SQ = 25 * 25;
         
@@ -467,7 +463,6 @@ namespace Digi.ProjectorPreview
                 if(projector.Closed || projector.MarkedForClose)
                 {
                     projector = null;
-                    blockCache = null;
                     return;
                 }
                 
@@ -519,7 +514,6 @@ namespace Digi.ProjectorPreview
         {
             objectBuilder = null;
             projector = null;
-            blockCache = null;
         }
         
         public override MyObjectBuilder_EntityBase GetObjectBuilder(bool copy = false)
