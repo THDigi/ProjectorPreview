@@ -395,7 +395,7 @@ namespace Digi.ProjectorPreview
             get { return rotate.X; }
             set
             {
-                rotate.X = (float)Math.Round(value, 2);;
+                rotate.X = (float)Math.Round(value, 2);
                 
                 if(propertiesChanged == 0)
                     propertiesChanged = PROPERTIES_CHANGED_TICKS;
@@ -407,7 +407,7 @@ namespace Digi.ProjectorPreview
             get { return rotate.Y; }
             set
             {
-                rotate.Y = (float)Math.Round(value, 2);;
+                rotate.Y = (float)Math.Round(value, 2);
                 
                 if(propertiesChanged == 0)
                     propertiesChanged = PROPERTIES_CHANGED_TICKS;
@@ -419,7 +419,7 @@ namespace Digi.ProjectorPreview
             get { return rotate.Z; }
             set
             {
-                rotate.Z = (float)Math.Round(value, 2);;
+                rotate.Z = (float)Math.Round(value, 2);
                 
                 if(propertiesChanged == 0)
                     propertiesChanged = PROPERTIES_CHANGED_TICKS;
@@ -616,7 +616,7 @@ namespace Digi.ProjectorPreview
                                 statusPrevColors.Add(projectedSlim.Position, projectedSlim.GetColorMask());
                                 
                                 var color = GetBlockStatusColor(projectedSlim, realGrid.GetCubeBlock(projectedSlim.Position));
-                                customProjection.ChangeColor(projectedSlim as Sandbox.Game.Entities.Cube.MySlimBlock, color);
+                                customProjection.ChangeColor(customProjection.GetCubeBlock(projectedSlim.Position), color);
                                 
                                 if(projectedSlim.FatBlock != null)
                                 {
@@ -645,7 +645,7 @@ namespace Digi.ProjectorPreview
                                 if(Vector3.DistanceSquared(projectedSlim.GetColorMask(), color) <= 0.0001f)
                                     continue;
                                 
-                                customProjection.ChangeColor(projectedSlim as Sandbox.Game.Entities.Cube.MySlimBlock, color);
+                                customProjection.ChangeColor(customProjection.GetCubeBlock(projectedSlim.Position), color);
                                 
                                 if(projectedSlim.FatBlock != null)
                                 {
