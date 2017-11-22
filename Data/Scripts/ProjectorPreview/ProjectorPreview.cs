@@ -1,34 +1,55 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text;
-using System.Text.RegularExpressions;
 using Sandbox.Common.ObjectBuilders;
-using Sandbox.Definitions;
-using Sandbox.Game.Entities;
 using Sandbox.ModAPI;
 using Sandbox.ModAPI.Interfaces.Terminal;
 using VRage.Game;
-using VRage.Game.Entity;
+using VRage.Game.Components;
 using VRage.Game.ModAPI;
+using VRage.ModAPI;
+using VRage.ObjectBuilders;
 using VRage.Utils;
 using VRageMath;
-using VRage.ObjectBuilders;
-using VRage.Game.Components;
-using VRage.ModAPI;
-
-using Digi.Utils;
 
 namespace Digi.ProjectorPreview
 {
     [MySessionComponentDescriptor(MyUpdateOrder.BeforeSimulation)]
-    public class ProjectorPreview : MySessionComponentBase
+    public class ProjectorPreviewMod : MySessionComponentBase
     {
-        public static bool init { get; private set; }
-        
-        public static readonly List<IMyTerminalControl> terminalControls = new List<IMyTerminalControl>();
-        public static readonly List<IMyTerminalControl> refreshControls = new List<IMyTerminalControl>();
-        public static readonly HashSet<string> hideTerminalControls = new HashSet<string>()
+        public override void LoadData()
+        {
+            Instance = this;
+            Log.SetUp("Projector Preview", 517675282, "ProjectorPreview");
+        }
+
+        public static ProjectorPreviewMod Instance = null;
+        public static bool IsInProjectorTerminal => Instance.ViewingTerminalOf != null;
+
+        public bool IsInitialized = false;
+        public bool IsPlayer = false;
+        public float Transparency;
+        public float TransparencyHighlight;
+        public float TransparencyDecor;
+        public float TransparencyDecorHighlight;
+        public IMyProjector ViewingTerminalOf = null;
+        public IMyTerminalControl ControlPreview = null;
+        public IMyTerminalControl ControlUseThisShip = null;
+        public IMyTerminalControl ControlRemoveButton = null;
+        public readonly IMyTerminalControl[] ControlRotate = new IMyTerminalControl[3];
+        public readonly List<IMyTerminalControl> SortedControls = new List<IMyTerminalControl>(); // all controls properly sorted
+        public readonly List<IMyTerminalControl> RefreshControls = new List<IMyTerminalControl>(); // controls to be refreshed on certain actions
+        private bool createdTerminalControls = false;
+
+        public const bool DEBUG = false;
+        public const ushort PACKET_ID = 62528;
+        public readonly Guid SETTINGS_GUID = new Guid("1F2F7BAA-31BA-4E75-82C4-FA29679DE822");
+        public readonly Guid BLUEPRINT_GUID = new Guid("E973AD49-F3F4-41B9-811B-2B114E6EE0F9");
+        public readonly MyStringHash EMISSIVE_NAME_ALTERNATIVE = MyStringHash.GetOrCompute("Alternative");
+        public readonly Color LIGHT_COLOR = new Color(190, 225, 255);
+        public const string CONTROL_PREFIX = "ProjectorPreview.";
+        public const string REMOVE_BUTTON_ID = "Remove";
+        public readonly HashSet<string> REFRESH_VANILLA_IDS = new HashSet<string>()
         {
             "KeepProjection",
             "ShowOnlyBuildable",
@@ -38,1008 +59,777 @@ namespace Digi.ProjectorPreview
             "RotX",
             "RotY",
             "RotZ",
-            // scenario-only ones
-            /*
-            "SpawnProjection",
-            "InstantBuilding",
-            "GetOwnership",
-            "NumberOfProjections",
-            "NumberOfBlocks",
-             */
         };
-        
+        public readonly HashSet<MyObjectBuilderType> DECORATIVE_TYPES = new HashSet<MyObjectBuilderType>()
+        {
+            typeof(MyObjectBuilder_CubeBlock),
+            typeof(MyObjectBuilder_Passage),
+            typeof(MyObjectBuilder_Wheel),
+        };
+
         private void Init()
         {
+            IsInitialized = true;
+            IsPlayer = !(MyAPIGateway.Session.IsServer && MyAPIGateway.Utilities.IsDedicated);
+
             Log.Init();
-            Log.Info("Initialized.");
-            init = true;
-            
+            UpdateConfigValues();
+
+            if(IsPlayer)
+                MyAPIGateway.Gui.GuiControlRemoved += GUIControlRemoved;
+
+            MyAPIGateway.Multiplayer.RegisterMessageHandler(PACKET_ID, PacketReceived);
             MyAPIGateway.TerminalControls.CustomControlGetter += CustomControlGetter;
-            
-            terminalControls.Clear();
-            CreateControls<IMyProjector>(terminalControls);
+
+            // SetUpdateOrder() can't be called in update methods, needs to be done like this
+            MyAPIGateway.Utilities.InvokeOnGameThread(() => SetUpdateOrder(MyUpdateOrder.NoUpdate));
         }
-        
+
         protected override void UnloadData()
         {
+            Instance = null;
+
             try
             {
-                if(init)
+                if(IsInitialized)
                 {
-                    init = false;
-                    
+                    IsInitialized = false;
+
+                    MyAPIGateway.Gui.GuiControlRemoved -= GUIControlRemoved;
+
+                    MyAPIGateway.Multiplayer.UnregisterMessageHandler(PACKET_ID, PacketReceived);
                     MyAPIGateway.TerminalControls.CustomControlGetter -= CustomControlGetter;
-                    
-                    Log.Info("Mod unloaded.");
                 }
             }
             catch(Exception e)
             {
                 Log.Error(e);
             }
-            
+
             Log.Close();
         }
-        
+
         public override void UpdateBeforeSimulation()
         {
-            if(!init)
+            try
             {
-                if(MyAPIGateway.Session == null)
-                    return;
-                
-                Init();
-            }
-        }
-        
-        // HACK workaround IMyProjector not being supported by AddControl()
-        private static void CustomControlGetter(IMyTerminalBlock block, List<IMyTerminalControl> controls)
-        {
-            var projector = block as IMyProjector;
-            
-            if(projector != null && terminalControls.Count > 0)
-            {
-                refreshControls.Clear();
-                
-                bool preview = projector.GameLogic.GetAs<Projector>().UI_Preview;
-                
-                for(int i = controls.Count - 1; i >= 0; i--)
+                if(!IsInitialized)
                 {
-                    var c = controls[i];
-                    
-                    if(hideTerminalControls.Contains(c.Id))
-                    {
-                        refreshControls.Add(c);
-                        
-                        c.Enabled = delegate(IMyTerminalBlock b)
-                        {
-                            var p = b as IMyProjector;
-                            
-                            if(p == null || b.GameLogic.GetAs<Projector>().UI_Preview)
-                                return false;
-                            
-                            return p.IsProjecting;
-                        };
-                    }
+                    if(MyAPIGateway.Session == null)
+                        return;
+
+                    Init();
                 }
-                
-                refreshControls.AddList(terminalControls);
-                controls.AddList(terminalControls);
+            }
+            catch(Exception e)
+            {
+                Log.Error(e);
             }
         }
-        
-        private static void CreateControls<T>(List<IMyTerminalControl> controls)
+
+        private void GUIControlRemoved(object obj) // only executed on players
         {
-            const string PREFIX = "ProjectorPreview.";
-            var tc = MyAPIGateway.TerminalControls;
-            
+            try
             {
-                var c = tc.CreateControl<IMyTerminalControlSeparator, T>(string.Empty);
-                controls.Add(c);
+                var objName = obj.ToString();
+
+                if(objName.EndsWith("ScreenOptionsSpace")) // closing options menu just assumes you changed something so it'll re-check config settings
+                    UpdateConfigValues();
+                else if(objName.EndsWith("GuiScreenTerminal")) // closing the terminal menu
+                    ViewingTerminalOf = null;
             }
-            
+            catch(Exception e)
             {
-                var c = tc.CreateControl<IMyTerminalControlCheckbox, T>(PREFIX + "Enabled");
-                c.Title = MyStringId.GetOrCompute("Projector Preview");
-                c.Tooltip = MyStringId.GetOrCompute("Toggles the projector mode between the normal to-scale blueprint mode and preview mode for miniature overview.");
-                c.SupportsMultipleBlocks = true;
-                c.Getter = (b) => b.GameLogic.GetAs<Projector>().UI_Preview;
-                c.Setter = (b, v) => b.GameLogic.GetAs<Projector>().UI_Preview = v;
-                controls.Add(c);
+                Log.Error(e);
             }
-            
+        }
+
+        private void UpdateConfigValues()
+        {
+            var cfg = MyAPIGateway.Session.Config;
+            var aa = (int)(cfg.AntialiasingMode ?? 0); // HACK VRageRender.MyAntialiasingMode not whitelisted.
+
+            // finalTransparency = (SeeThrough && BlockIsDecor ? (highlight ? TransparencyDecorHighlight : TransparencyDecor) : (highlight ? TransparencyHighlight : Transparency))
+
+            if(aa >= 1) // FXAA or any future AA
             {
-                var c = tc.CreateControl<IMyTerminalControlSlider, T>(PREFIX + "Scale");
-                c.Title = MyStringId.GetOrCompute("Relative scale");
-                c.Tooltip = MyStringId.GetOrCompute("The hologram scale relative to the grid size.");
-                c.SupportsMultipleBlocks = true;
-                c.Getter = (b) => b.GameLogic.GetAs<Projector>().UI_Scale;
-                c.Setter = (b, v) => b.GameLogic.GetAs<Projector>().UI_Scale = v;
-                c.SetLogLimits((b) => 0.1f, (b) => b.GameLogic.GetAs<Projector>().absMax);
-                c.Writer = delegate(IMyTerminalBlock b, StringBuilder s)
+                Transparency = -(1f / 3f);
+                TransparencyHighlight = -0.05f;
+                TransparencyDecor = -(2f / 3f);
+                TransparencyDecorHighlight = -0.25f;
+            }
+            else // no AA
+            {
+                Transparency = -0.25f;
+                TransparencyHighlight = -0.1f;
+                TransparencyDecor = -0.5f;
+                TransparencyDecorHighlight = -0.25f;
+            }
+        }
+
+        #region Network sync
+        private static void PacketReceived(byte[] bytes)
+        {
+            try
+            {
+                if(bytes.Length <= 2)
                 {
-                    var logic = b.GameLogic.GetAs<Projector>();
-                    s.AppendFormat("{0:0.00}m (1:{1:0.000})", logic.scale, logic.absMax / logic.scale);
-                };
-                c.Enabled = (b) => b.GameLogic.GetAs<Projector>().UI_Enabled;
-                controls.Add(c);
+                    if(DEBUG)
+                        Log.Error($"PacketReceived(); invalid length <= 2; length={bytes.Length}");
+
+                    return;
+                }
+
+                var data = MyAPIGateway.Utilities.SerializeFromBinary<PacketData>(bytes); // this will throw errors on invalid data
+
+                if(data == null)
+                {
+                    if(DEBUG)
+                        Log.Error($"PacketReceived(); no deserialized data!");
+
+                    return;
+                }
+
+                IMyEntity ent;
+
+                if(!MyAPIGateway.Entities.TryGetEntityById(data.EntityId, out ent) || ent.Closed || !(ent is IMyProjector))
+                {
+                    if(DEBUG)
+                        Log.Info($"PacketReceived(); {data.Type}; {(ent == null ? "can't find entity" : (ent.Closed ? "found closed entity" : "entity not projector"))}");
+
+                    return;
+                }
+
+                var logic = ent.GameLogic.GetAs<Projector>();
+
+                if(logic == null)
+                {
+                    if(DEBUG)
+                        Log.Error($"PacketReceived(); {data.Type}; projector doesn't have the gamelogic component!");
+
+                    return;
+                }
+
+                switch(data.Type)
+                {
+                    case PacketType.SETTINGS:
+                        {
+                            if(data.Settings == null)
+                            {
+                                if(DEBUG)
+                                    Log.Error($"PacketReceived(); {data.Type}; settings are null!");
+
+                                return;
+                            }
+
+                            if(DEBUG)
+                                Log.Info($"PacketReceived(); Settings; {(MyAPIGateway.Multiplayer.IsServer ? " Relaying to clients;" : "")}Valid!\n{logic.Settings}");
+
+                            logic.UpdateSettings(data.Settings);
+                            logic.SaveSettings();
+
+                            if(MyAPIGateway.Multiplayer.IsServer)
+                                RelayToClients(((IMyCubeBlock)ent).CubeGrid.GetPosition(), bytes, data.Sender);
+                        }
+                        break;
+                    case PacketType.REMOVE:
+                        logic.RemoveBlueprints_Receiver(bytes, data.Sender);
+                        break;
+                    case PacketType.RECEIVED_BP:
+                        logic.PlayerReceivedBP(data.Sender);
+                        break;
+                    case PacketType.USE_THIS_AS_IS:
+                        logic.UseThisShip_Receiver(false);
+                        break;
+                    case PacketType.USE_THIS_FIX:
+                        logic.UseThisShip_Receiver(true);
+                        break;
+                }
             }
-            
+            catch(Exception e)
             {
-                var c = tc.CreateControl<IMyTerminalControlCheckbox, T>(PREFIX + "StatusMode");
+                Log.Error(e, "Invalid packet data!");
+            }
+        }
+
+        public static void RelaySettingsToClients(IMyCubeBlock block, ProjectorPreviewModSettings settings)
+        {
+            if(DEBUG)
+                Log.Info("RelaySettingsToClients(block,settings)");
+
+            var data = new PacketData(MyAPIGateway.Multiplayer.MyId, block.EntityId, settings);
+            var bytes = MyAPIGateway.Utilities.SerializeToBinary(data);
+            RelayToClients(block.CubeGrid.GetPosition(), bytes, data.Sender);
+        }
+
+        public static void RelayToClients(Vector3D syncPosition, byte[] bytes, ulong sender)
+        {
+            if(DEBUG)
+                Log.Info("RelayToClients(syncPos,bytes,sender)");
+
+            var localSteamId = MyAPIGateway.Multiplayer.MyId;
+            var distSq = MyAPIGateway.Session.SessionSettings.ViewDistance;
+            distSq += 1000; // some safety padding
+            distSq *= distSq;
+
+            MyAPIGateway.Players.GetPlayers(null, (p) =>
+            {
+                var id = p.SteamUserId;
+
+                if(id != localSteamId && id != sender && Vector3D.DistanceSquared(p.GetPosition(), syncPosition) <= distSq)
+                    MyAPIGateway.Multiplayer.SendMessageTo(PACKET_ID, bytes, p.SteamUserId);
+
+                return false; // avoid adding to the null list
+            });
+        }
+        #endregion
+
+        #region Terminal controls and actions
+        private void CustomControlGetter(IMyTerminalBlock block, List<IMyTerminalControl> controls)
+        {
+            try
+            {
+                ViewingTerminalOf = block as IMyProjector;
+
+                if(ViewingTerminalOf != null)
+                {
+                    ViewingTerminalOf.RefreshCustomInfo();
+
+                    if(SortedControls.Count == 0)
+                        return;
+
+                    controls.Clear();
+                    controls.AddList(SortedControls);
+                }
+            }
+            catch(Exception e)
+            {
+                Log.Error(e);
+            }
+        }
+
+        private readonly List<MyTerminalControlComboBoxItem> useThisShipOptions = new List<MyTerminalControlComboBoxItem>()
+        {
+            new MyTerminalControlComboBoxItem() { Key = 0, Value = MyStringId.GetOrCompute("(Pick an option)") },
+            new MyTerminalControlComboBoxItem() { Key = 1, Value = MyStringId.GetOrCompute("... in its current state.") },
+            new MyTerminalControlComboBoxItem() { Key = 2, Value = MyStringId.GetOrCompute("... as built & fixed.") }
+        };
+
+        public void SetupTerminalControls<T>()
+        {
+            if(createdTerminalControls)
+                return;
+
+            createdTerminalControls = true;
+
+            var tc = MyAPIGateway.TerminalControls;
+
+            // get existing controls before creating the ones for this mod
+            List<IMyTerminalControl> vanillaControls;
+            tc.GetControls<T>(out vanillaControls);
+
+            #region Top custom controls
+            {
+                var c = tc.CreateControl<IMyTerminalControlOnOffSwitch, T>(CONTROL_PREFIX + "Enabled");
+                c.Title = MyStringId.GetOrCompute("Projector Mode");
+                c.Tooltip = MyStringId.GetOrCompute("Change how to display the projection.\nEach mode has its own configurable controls.\n\n(Added by Projector Preview mod)");
+                c.OnText = MyStringId.GetOrCompute("Preview");
+                c.OffText = MyStringId.GetOrCompute("Build");
+                c.SupportsMultipleBlocks = true;
+                c.Enabled = Projector.UI_Preview_Enabled;
+                c.Getter = Projector.UI_Preview_Getter;
+                c.Setter = Projector.UI_Preview_Setter;
+
+                CreateActionPreviewMode<T>(c);
+
+                RefreshControls.Add(c);
+                ControlPreview = c;
+                // don't add to SortedControls here, it's added later
+
+                tc.AddControl<T>(c);
+            }
+
+            {
+                var c = tc.CreateControl<IMyTerminalControlCombobox, T>(CONTROL_PREFIX + "UseThisShip");
+                c.Title = MyStringId.GetOrCompute("Load this ship...");
+                c.Tooltip = MyStringId.GetOrCompute("Use the current ship as the blueprint for this projector.\nThis copies the ship in its current state or with all current blocks fixed/built, it does not automatically update it as it changes.\n\n(Added by Projector Preview mod)");
+                c.Enabled = (b) => b.IsWorking;
+                c.Setter = Projector.UI_UseThisShip_Action;
+                c.Getter = (b) => 0;
+                c.ComboBoxContent = (l) => l.AddList(useThisShipOptions);
+
+                CreateAction<T>(c,
+                    icon: MyAPIGateway.Utilities.GamePaths.ContentPath + @"\Textures\GUI\Icons\Actions\Start.dds",
+                    itemIds: new string[] { null, "UseShip", "UseShipBuilt" },
+                    itemNames: new string[] { null, "(Preview) Load this ship - as is", "(Preview) Load this ship - built&fixed" });
+
+                ControlUseThisShip = c;
+                // don't add to SortedControls here, it's added later
+
+                tc.AddControl<T>(c);
+            }
+            #endregion
+
+            #region Sorting and vanilla control editing
+            for(int i = 0; i < vanillaControls.Count; ++i)
+            {
+                var vc = vanillaControls[i];
+
+                if(REFRESH_VANILLA_IDS.Contains(vc.Id))
+                    RefreshControls.Add(vc);
+
+                if(vc.Id == REMOVE_BUTTON_ID)
+                {
+                    // add controls before the button
+                    SortedControls.Add(ControlUseThisShip);
+
+                    // add the button
+                    ControlRemoveButton = vc;
+                    SortedControls.Add(vc);
+                    
+                    // add controls right after the button
+                    SortedControls.Add(tc.CreateControl<IMyTerminalControlSeparator, T>(string.Empty));
+                    SortedControls.Add(ControlPreview);
+                    SortedControls.Add(tc.CreateControl<IMyTerminalControlSeparator, T>(string.Empty));
+
+                    var label = tc.CreateControl<IMyTerminalControlLabel, T>(string.Empty);
+                    label.Label = MyStringId.GetOrCompute("Build mode configuration");
+                    SortedControls.Add(label);
+
+                    var button = (IMyTerminalControlButton)vc;
+
+                    // edit the button to be visible when the custom projection is visible as well as normal projection
+                    button.Enabled = Projector.UI_RemoveButton_Enabled;
+
+                    // edit the action to remove both the vanilla projection and the custom projection
+                    button.Action = Projector.UI_RemoveButton_Action;
+                }
+                else
+                {
+                    SortedControls.Add(vc);
+                }
+            }
+            #endregion
+
+            #region Bottom controls
+            {
+                SortedControls.Add(tc.CreateControl<IMyTerminalControlSeparator, T>(string.Empty));
+
+                var label = tc.CreateControl<IMyTerminalControlLabel, T>(string.Empty);
+                label.Label = MyStringId.GetOrCompute("Preview mode configuration");
+                SortedControls.Add(label);
+                // no reason to add these to the TerminalControls
+            }
+
+            {
+                var c = tc.CreateControl<IMyTerminalControlSlider, T>(CONTROL_PREFIX + "Scale");
+                c.Title = MyStringId.GetOrCompute("Hologram scale");
+                c.Tooltip = MyStringId.GetOrCompute("The hologram size in meters.");
+                c.SupportsMultipleBlocks = true;
+                c.Enabled = Projector.UI_Generic_Enabled;
+                c.SetLogLimits(Projector.UI_Scale_LogLimitMin, Projector.UI_Scale_LogLimitMax);
+                c.Getter = Projector.UI_Scale_Getter;
+                c.Setter = Projector.UI_Scale_Setter;
+                c.Writer = Projector.UI_Scale_Writer;
+
+                CreateAction<T>(c,
+                    modifier: 0.1f,
+                    gridSizeDefaultValue: true);
+
+                SortedControls.Add(c);
+                RefreshControls.Add(c);
+
+                tc.AddControl<T>(c);
+            }
+
+            {
+                var c = tc.CreateControl<IMyTerminalControlCheckbox, T>(CONTROL_PREFIX + "StatusMode");
                 c.Title = MyStringId.GetOrCompute("Status mode");
                 c.Tooltip = MyStringId.GetOrCompute("Colors the projection depending on the status of the projector ship's blocks." +
                                                     "\n" +
-                                                    "\nYellow to orange if the block is within max health and critical (red line)." +
-                                                    "\nOrange to red if the block is below critical and going towards being completely destroyed." +
-                                                    "\nDark red if the block is missing." +
-                                                    "\nPurple if the block type is different than the projection's block." +
-                                                    "\nThe rest are gray.");
+                                                    "\nBlack = matches the blueprint." +
+                                                    "\nYellow-Orange = integrity above red line but not full health." +
+                                                    "\nOrange-Red = integrity below red line and going towards being completely destroyed." +
+                                                    "\nRed blinking = missing from ship." +
+                                                    "\nTeal = orientation/position is wrong (only shows up in build stage)." +
+                                                    "\nDark purple = color is different." +
+                                                    "\nLight purple = type is different.");
                 c.SupportsMultipleBlocks = true;
-                c.Getter = (b) => b.GameLogic.GetAs<Projector>().UI_Status;
-                c.Setter = (b, v) => b.GameLogic.GetAs<Projector>().UI_Status = v;
-                c.Enabled = (b) => b.GameLogic.GetAs<Projector>().UI_Enabled;
-                controls.Add(c);
+                c.Enabled = Projector.UI_Generic_Enabled;
+                c.Getter = Projector.UI_Status_Getter;
+                c.Setter = Projector.UI_Status_Setter;
+
+                CreateAction<T>(c, iconPack: "Missile");
+
+                SortedControls.Add(c);
+                RefreshControls.Add(c);
+
+                tc.AddControl<T>(c);
             }
-            
+
             {
-                var c = tc.CreateControl<IMyTerminalControlSlider, T>(PREFIX + "OffsetX");
+                var c = tc.CreateControl<IMyTerminalControlCheckbox, T>(CONTROL_PREFIX + "SeeThrough");
+                c.Title = MyStringId.GetOrCompute("See-through armor");
+                c.Tooltip = MyStringId.GetOrCompute("Makes armor and decorative blocks more transparent.");
+                c.SupportsMultipleBlocks = true;
+                c.Enabled = Projector.UI_Generic_Enabled;
+                c.Getter = Projector.UI_SeeThrough_Getter;
+                c.Setter = Projector.UI_SeeThrough_Setter;
+
+                CreateAction<T>(c, iconPack: "MovingObject");
+
+                SortedControls.Add(c);
+                RefreshControls.Add(c);
+
+                tc.AddControl<T>(c);
+            }
+
+            {
+                var c = tc.CreateControl<IMyTerminalControlSlider, T>(CONTROL_PREFIX + "OffsetX");
                 c.Title = MyStringId.GetOrCompute("Offset X");
-                //c.Tooltip = MyStringId.GetOrCompute("");
+                c.Tooltip = MyStringId.GetOrCompute("Changes the projection position.");
                 c.SupportsMultipleBlocks = true;
-                c.Getter = (b) => b.GameLogic.GetAs<Projector>().UI_OffsetX;
-                c.Setter = (b, v) => b.GameLogic.GetAs<Projector>().UI_OffsetX = v;
-                c.SetLimits(-10, 10);
-                c.Writer = (b, s) => ControlOffsetStatus(b, s, 0);
-                c.Enabled = (b) => b.GameLogic.GetAs<Projector>().UI_Enabled;
-                controls.Add(c);
+                c.Enabled = Projector.UI_Generic_Enabled;
+                c.Getter = (b) => Projector.UI_Offset_Getter(b, 0);
+                c.Setter = (b, v) => Projector.UI_Offset_Setter(b, v, 0);
+                c.SetLimits(-Projector.MIN_MAX_OFFSET, Projector.MIN_MAX_OFFSET);
+                c.Writer = (b, s) => Projector.UI_Offset_Writer(b, s, 0);
+
+                CreateAction<T>(c, modifier: 0.1f);
+
+                SortedControls.Add(c);
+                RefreshControls.Add(c);
+
+                tc.AddControl<T>(c);
             }
-            
+
             {
-                var c = tc.CreateControl<IMyTerminalControlSlider, T>(PREFIX + "OffsetY");
+                var c = tc.CreateControl<IMyTerminalControlSlider, T>(CONTROL_PREFIX + "OffsetY");
                 c.Title = MyStringId.GetOrCompute("Offset Y");
-                //c.Tooltip = MyStringId.GetOrCompute("");
+                c.Tooltip = MyStringId.GetOrCompute("Changes the projection position.");
                 c.SupportsMultipleBlocks = true;
-                c.Getter = (b) => b.GameLogic.GetAs<Projector>().UI_OffsetY;
-                c.Setter = (b, v) => b.GameLogic.GetAs<Projector>().UI_OffsetY = v;
-                c.SetLimits(-10, 10);
-                c.Writer = (b, s) => ControlOffsetStatus(b, s, 1);
-                c.Enabled = (b) => b.GameLogic.GetAs<Projector>().UI_Enabled;
-                controls.Add(c);
+                c.Enabled = Projector.UI_Generic_Enabled;
+                c.Getter = (b) => Projector.UI_Offset_Getter(b, 1);
+                c.Setter = (b, v) => Projector.UI_Offset_Setter(b, v, 1);
+                c.SetLimits(-Projector.MIN_MAX_OFFSET, Projector.MIN_MAX_OFFSET);
+                c.Writer = (b, s) => Projector.UI_Offset_Writer(b, s, 1);
+
+                CreateAction<T>(c, modifier: 0.1f);
+
+                SortedControls.Add(c);
+                RefreshControls.Add(c);
+
+                tc.AddControl<T>(c);
             }
-            
+
             {
-                var c = tc.CreateControl<IMyTerminalControlSlider, T>(PREFIX + "OffsetZ");
+                var c = tc.CreateControl<IMyTerminalControlSlider, T>(CONTROL_PREFIX + "OffsetZ");
                 c.Title = MyStringId.GetOrCompute("Offset Z");
-                //c.Tooltip = MyStringId.GetOrCompute("");
+                c.Tooltip = MyStringId.GetOrCompute("Changes the projection position.");
                 c.SupportsMultipleBlocks = true;
-                c.Getter = (b) => b.GameLogic.GetAs<Projector>().UI_OffsetZ;
-                c.Setter = (b, v) => b.GameLogic.GetAs<Projector>().UI_OffsetZ = v;
-                c.SetLimits(-10, 10);
-                c.Writer = (b, s) => ControlOffsetStatus(b, s, 2);
-                c.Enabled = (b) => b.GameLogic.GetAs<Projector>().UI_Enabled;
-                controls.Add(c);
+                c.Enabled = Projector.UI_Generic_Enabled;
+                c.Getter = (b) => Projector.UI_Offset_Getter(b, 2);
+                c.Setter = (b, v) => Projector.UI_Offset_Setter(b, v, 2);
+                c.SetLimits(-Projector.MIN_MAX_OFFSET, Projector.MIN_MAX_OFFSET);
+                c.Writer = (b, s) => Projector.UI_Offset_Writer(b, s, 2);
+
+                CreateAction<T>(c, modifier: 0.1f);
+
+                SortedControls.Add(c);
+                RefreshControls.Add(c);
+
+                tc.AddControl<T>(c);
             }
-            
+
             {
-                var c = tc.CreateControl<IMyTerminalControlSlider, T>(PREFIX + "RotateX");
-                c.Title = MyStringId.GetOrCompute("Rotate X");
-                //c.Tooltip = MyStringId.GetOrCompute("");
+                var c = tc.CreateControl<IMyTerminalControlSlider, T>(CONTROL_PREFIX + "RotateX");
+                c.Title = MyStringId.GetOrCompute("Rotate X / Pitch");
+                c.Tooltip = MyStringId.GetOrCompute("Rotate projection along the X axis. This can be turned into constant spinning by checking the checkbox below.");
                 c.SupportsMultipleBlocks = true;
-                c.Getter = (b) => b.GameLogic.GetAs<Projector>().UI_RotateX;
-                c.Setter = (b, v) => b.GameLogic.GetAs<Projector>().UI_RotateX = v;
-                c.SetLimits(-360, 360);
-                c.Writer = (b, s) => ControlRotateStatus(b, s, 0);
-                c.Enabled = (b) => b.GameLogic.GetAs<Projector>().UI_Enabled;
-                controls.Add(c);
+                c.Enabled = Projector.UI_Generic_Enabled;
+                c.SetLimits(-Projector.MIN_MAX_ROTATE, Projector.MIN_MAX_ROTATE);
+                c.Getter = (b) => Projector.UI_Rotate_Getter(b, 0);
+                c.Setter = (b, v) => Projector.UI_Rotate_Setter(b, v, 0);
+                c.Writer = (b, s) => Projector.UI_Rotate_Writer(b, s, 0);
+
+                CreateAction<T>(c, modifier: 0.1f);
+
+                SortedControls.Add(c);
+                RefreshControls.Add(c);
+                ControlRotate[0] = c;
+
+                tc.AddControl<T>(c);
             }
-            
             {
-                var c = tc.CreateControl<IMyTerminalControlSlider, T>(PREFIX + "RotateY");
-                c.Title = MyStringId.GetOrCompute("Rotate Y");
-                //c.Tooltip = MyStringId.GetOrCompute("");
+                var c = tc.CreateControl<IMyTerminalControlCheckbox, T>(CONTROL_PREFIX + "SpinX");
+                c.Title = MyStringId.GetOrCompute("Spin X / Pitch");
+                c.Tooltip = MyStringId.GetOrCompute("Makes the Rotate X / Pitch slider act as spin speed.");
                 c.SupportsMultipleBlocks = true;
-                c.Getter = (b) => b.GameLogic.GetAs<Projector>().UI_RotateY;
-                c.Setter = (b, v) => b.GameLogic.GetAs<Projector>().UI_RotateY = v;
-                c.SetLimits(-360, 360);
-                c.Writer = (b, s) => ControlRotateStatus(b, s, 1);
-                c.Enabled = (b) => b.GameLogic.GetAs<Projector>().UI_Enabled;
-                controls.Add(c);
+                c.Enabled = Projector.UI_Generic_Enabled;
+                c.Getter = (b) => Projector.UI_Spin_Getter(b, 0);
+                c.Setter = (b, v) => Projector.UI_Spin_Setter(b, v, 0);
+
+                CreateAction<T>(c);
+
+                SortedControls.Add(c);
+                RefreshControls.Add(c);
+
+                tc.AddControl<T>(c);
             }
-            
+
             {
-                var c = tc.CreateControl<IMyTerminalControlSlider, T>(PREFIX + "RotateZ");
-                c.Title = MyStringId.GetOrCompute("Rotate Z");
-                //c.Tooltip = MyStringId.GetOrCompute("");
+                var c = tc.CreateControl<IMyTerminalControlSlider, T>(CONTROL_PREFIX + "RotateY");
+                c.Title = MyStringId.GetOrCompute("Rotate Y / Yaw");
+                c.Tooltip = MyStringId.GetOrCompute("Rotate projection along the Y axis. This can be turned into constant spinning by checking the checkbox below.");
                 c.SupportsMultipleBlocks = true;
-                c.Getter = (b) => b.GameLogic.GetAs<Projector>().UI_RotateZ;
-                c.Setter = (b, v) => b.GameLogic.GetAs<Projector>().UI_RotateZ = v;
-                c.SetLimits(-360, 360);
-                c.Writer = (b, s) => ControlRotateStatus(b, s, 2);
-                c.Enabled = (b) => b.GameLogic.GetAs<Projector>().UI_Enabled;
-                controls.Add(c);
+                c.Enabled = Projector.UI_Generic_Enabled;
+                c.SetLimits(-Projector.MIN_MAX_ROTATE, Projector.MIN_MAX_ROTATE);
+                c.Getter = (b) => Projector.UI_Rotate_Getter(b, 1);
+                c.Setter = (b, v) => Projector.UI_Rotate_Setter(b, v, 1);
+                c.Writer = (b, s) => Projector.UI_Rotate_Writer(b, s, 1);
+
+                CreateAction<T>(c, modifier: 0.1f);
+
+                SortedControls.Add(c);
+                RefreshControls.Add(c);
+                ControlRotate[1] = c;
+
+                tc.AddControl<T>(c);
+            }
+            {
+                var c = tc.CreateControl<IMyTerminalControlCheckbox, T>(CONTROL_PREFIX + "SpinY");
+                c.Title = MyStringId.GetOrCompute("Spin Y / Yaw");
+                c.Tooltip = MyStringId.GetOrCompute("Makes the Rotate Y / Yaw slider act as spin speed.");
+                c.SupportsMultipleBlocks = true;
+                c.Enabled = Projector.UI_Generic_Enabled;
+                c.Getter = (b) => Projector.UI_Spin_Getter(b, 1);
+                c.Setter = (b, v) => Projector.UI_Spin_Setter(b, v, 1);
+
+                CreateAction<T>(c);
+
+                SortedControls.Add(c);
+                RefreshControls.Add(c);
+
+                tc.AddControl<T>(c);
+            }
+
+            {
+                var c = tc.CreateControl<IMyTerminalControlSlider, T>(CONTROL_PREFIX + "RotateZ");
+                c.Title = MyStringId.GetOrCompute("Rotate Z / Roll");
+                c.Tooltip = MyStringId.GetOrCompute("Rotate projection along the Z axis. This can be turned into constant spinning by checking the checkbox below.");
+                c.SupportsMultipleBlocks = true;
+                c.Enabled = Projector.UI_Generic_Enabled;
+                c.SetLimits(-Projector.MIN_MAX_ROTATE, Projector.MIN_MAX_ROTATE);
+                c.Getter = (b) => Projector.UI_Rotate_Getter(b, 2);
+                c.Setter = (b, v) => Projector.UI_Rotate_Setter(b, v, 2);
+                c.Writer = (b, s) => Projector.UI_Rotate_Writer(b, s, 2);
+
+                CreateAction<T>(c, modifier: 0.1f);
+
+                SortedControls.Add(c);
+                RefreshControls.Add(c);
+                ControlRotate[2] = c;
+
+                tc.AddControl<T>(c);
+            }
+            {
+                var c = tc.CreateControl<IMyTerminalControlCheckbox, T>(CONTROL_PREFIX + "SpinZ");
+                c.Title = MyStringId.GetOrCompute("Spin Z / Roll");
+                c.Tooltip = MyStringId.GetOrCompute("Makes the Rotate Z / Roll slider act as spin speed.");
+                c.SupportsMultipleBlocks = true;
+                c.Enabled = Projector.UI_Generic_Enabled;
+                c.Getter = (b) => Projector.UI_Spin_Getter(b, 2);
+                c.Setter = (b, v) => Projector.UI_Spin_Setter(b, v, 2);
+
+                CreateAction<T>(c);
+
+                SortedControls.Add(c);
+                RefreshControls.Add(c);
+
+                tc.AddControl<T>(c);
+            }
+            #endregion
+        }
+
+        private void CreateActionPreviewMode<T>(IMyTerminalControlOnOffSwitch c)
+        {
+            var id = ((IMyTerminalControl)c).Id;
+            var gamePath = MyAPIGateway.Utilities.GamePaths.ContentPath;
+            Action<IMyTerminalBlock, StringBuilder> writer = (b, s) => s.Append(c.Getter(b) ? c.OnText : c.OffText);
+
+            {
+                var a = MyAPIGateway.TerminalControls.CreateAction<T>(CONTROL_PREFIX + id + "_Toggle");
+                a.Name = new StringBuilder(c.Title.String).Append(" - ").Append(c.OnText.String).Append("/").Append(c.OffText.String);
+                a.Icon = gamePath + @"\Textures\GUI\Icons\Actions\SmallShipToggle.dds";
+                a.ValidForGroups = true;
+                a.Action = (b) => c.Setter(b, !c.Getter(b));
+                a.Writer = writer;
+
+                MyAPIGateway.TerminalControls.AddAction<T>(a);
+            }
+            {
+                var a = MyAPIGateway.TerminalControls.CreateAction<T>(CONTROL_PREFIX + id + "_On");
+                a.Name = new StringBuilder(c.Title.String).Append(" - ").Append(c.OnText.String);
+                a.Icon = gamePath + @"\Textures\GUI\Icons\Actions\SmallShipSwitchOn.dds";
+                a.ValidForGroups = true;
+                a.Action = (b) => c.Setter(b, true);
+                a.Writer = writer;
+
+                MyAPIGateway.TerminalControls.AddAction<T>(a);
+            }
+            {
+                var a = MyAPIGateway.TerminalControls.CreateAction<T>(CONTROL_PREFIX + id + "_Off");
+                a.Name = new StringBuilder(c.Title.String).Append(" - ").Append(c.OffText.String);
+                a.Icon = gamePath + @"\Textures\GUI\Icons\Actions\LargeShipSwitchOn.dds";
+                a.ValidForGroups = true;
+                a.Action = (b) => c.Setter(b, false);
+                a.Writer = writer;
+
+                MyAPIGateway.TerminalControls.AddAction<T>(a);
             }
         }
-        
-        private static void ControlRotateStatus(IMyTerminalBlock b, StringBuilder s, int axis)
+
+        private void CreateAction<T>(IMyTerminalControlCheckbox c,
+            bool addToggle = true,
+            bool addOnOff = true,
+            string iconPack = null,
+            string iconToggle = null,
+            string iconOn = null,
+            string iconOff = null)
         {
-            var r = b.GameLogic.GetAs<Projector>().rotate.GetDim(axis);
-            var absR = Math.Abs(r);
-            
-            if(absR <= 0.001f)
-                s.Append("Off");
-            else if(r > 0)
-                s.AppendFormat("Spinning {0:0.00}°/s", r);
-            else
-                s.AppendFormat("Fixed at {0:0.00}°", absR);
-        }
-        
-        private static void ControlOffsetStatus(IMyTerminalBlock b, StringBuilder s, int axis)
-        {
-            var o = b.GameLogic.GetAs<Projector>().offset.GetDim(axis);
-            
-            if(Math.Abs(o) <= 0.001f)
-                s.Append("Off");
-            else
-                s.AppendFormat("{0:0.00}m", o);
-        }
-    }
-    
-    [MyEntityComponentDescriptor(typeof(MyObjectBuilder_Projector))]
-    public class Projector : MyGameLogicComponent
-    {
-        private bool preview = false;
-        private bool status = false;
-        public float scale = MIN_SCALE;
-        public Vector3 offset = Vector3.Zero;
-        public Vector3 rotate = Vector3.Zero;
-        
-        public float absMax = 100;
-        
-        private byte skip = 200;
-        private bool first = true;
-        private long turnOn = 0;
-        private bool visible = true;
-        private int statusIndex = 0;
-        private byte propertiesChanged = 0;
-        private Vector3 rotateMemory = Vector3.Zero;
-        private float gridSize = 0.5f;
-        private MyCubeGrid customProjection = null;
-        private List<IMySlimBlock> statusCache = null;
-        private Dictionary<Vector3I, Vector3> statusPrevColors = null;
-        
-        public bool UI_Enabled
-        {
-            get { return preview; }
-        }
-        
-        public bool UI_Preview
-        {
-            get { return preview; }
-            set
+            var id = ((IMyTerminalControl)c).Id;
+            var name = "(Preview) " + c.Title.String;
+            Action<IMyTerminalBlock, StringBuilder> writer = (b, s) => s.Append(c.Getter(b) ? c.OnText : c.OffText);
+
+            if(iconToggle == null && iconOn == null && iconOff == null)
             {
-                preview = value;
-                
-                foreach(var c in ProjectorPreview.refreshControls)
+                var pack = iconPack ?? "";
+                var gamePath = MyAPIGateway.Utilities.GamePaths.ContentPath;
+                iconToggle = gamePath + @"\Textures\GUI\Icons\Actions\" + pack + "Toggle.dds";
+                iconOn = gamePath + @"\Textures\GUI\Icons\Actions\" + pack + "SwitchOn.dds";
+                iconOff = gamePath + @"\Textures\GUI\Icons\Actions\" + pack + "SwitchOff.dds";
+            }
+
+            if(addToggle)
+            {
+                var a = MyAPIGateway.TerminalControls.CreateAction<T>(CONTROL_PREFIX + id + "_Toggle");
+                a.Name = new StringBuilder(name).Append(" On/Off");
+                a.Icon = iconToggle;
+                a.ValidForGroups = true;
+                a.Action = (b) => c.Setter(b, !c.Getter(b));
+                if(writer != null)
+                    a.Writer = writer;
+
+                MyAPIGateway.TerminalControls.AddAction<T>(a);
+            }
+
+            if(addOnOff)
+            {
                 {
-                    c.UpdateVisual();
+                    var a = MyAPIGateway.TerminalControls.CreateAction<T>(CONTROL_PREFIX + id + "_On");
+                    a.Name = new StringBuilder(name).Append(" On");
+                    a.Icon = iconOn;
+                    a.ValidForGroups = true;
+                    a.Action = (b) => c.Setter(b, true);
+                    if(writer != null)
+                        a.Writer = writer;
+
+                    MyAPIGateway.TerminalControls.AddAction<T>(a);
                 }
-                
-                if(propertiesChanged == 0)
-                    propertiesChanged = PROPERTIES_CHANGED_TICKS;
-            }
-        }
-        
-        public float UI_Scale
-        {
-            get { return scale; }
-            set
-            {
-                scale = (float)Math.Round(MathHelper.Clamp(value, MIN_SCALE, Math.Min(absMax, MAX_SCALE)), 3);
-                
-                if(propertiesChanged == 0)
-                    propertiesChanged = PROPERTIES_CHANGED_TICKS;
-            }
-        }
-        
-        public bool UI_Status
-        {
-            get { return status; }
-            set
-            {
-                status = value;
-                
-                if(propertiesChanged == 0)
-                    propertiesChanged = PROPERTIES_CHANGED_TICKS;
-            }
-        }
-        
-        public float UI_OffsetX
-        {
-            get { return offset.X; }
-            set
-            {
-                offset.X = (float)Math.Round(value, 2);
-                
-                if(propertiesChanged == 0)
-                    propertiesChanged = PROPERTIES_CHANGED_TICKS;
-            }
-        }
-        
-        public float UI_OffsetY
-        {
-            get { return offset.Y; }
-            set
-            {
-                offset.Y = (float)Math.Round(value, 2);
-                
-                if(propertiesChanged == 0)
-                    propertiesChanged = PROPERTIES_CHANGED_TICKS;
-            }
-        }
-        
-        public float UI_OffsetZ
-        {
-            get { return offset.Z; }
-            set
-            {
-                offset.Z = (float)Math.Round(value, 2);
-                
-                if(propertiesChanged == 0)
-                    propertiesChanged = PROPERTIES_CHANGED_TICKS;
-            }
-        }
-        
-        public float UI_RotateX
-        {
-            get { return rotate.X; }
-            set
-            {
-                rotate.X = (float)Math.Round(value, 2);
-                
-                if(propertiesChanged == 0)
-                    propertiesChanged = PROPERTIES_CHANGED_TICKS;
-            }
-        }
-        
-        public float UI_RotateY
-        {
-            get { return rotate.Y; }
-            set
-            {
-                rotate.Y = (float)Math.Round(value, 2);
-                
-                if(propertiesChanged == 0)
-                    propertiesChanged = PROPERTIES_CHANGED_TICKS;
-            }
-        }
-        
-        public float UI_RotateZ
-        {
-            get { return rotate.Z; }
-            set
-            {
-                rotate.Z = (float)Math.Round(value, 2);
-                
-                if(propertiesChanged == 0)
-                    propertiesChanged = PROPERTIES_CHANGED_TICKS;
-            }
-        }
-        
-        //private static bool terminalUI = false;
-        
-        private static readonly StringBuilder str = new StringBuilder();
-        
-        public const string DATA_TAG_START = "{ProjectorPreview:";
-        public const char DATA_TAG_END = '}';
-        public const char DATA_SEPARATOR = ';';
-        public const char DATA_KEYVALUE_SEPARATOR = ':';
-        
-        public const byte PROPERTIES_CHANGED_TICKS = 15;
-        
-        public const float TRANSPARENCY_FATBLOCK = -0.5f; // dither transparency, negative to have the hologram effect
-        public const float TRANSPARENCY_GRID = -0.75f;
-        public const float MAX_RANGE_SQ = 25 * 25;
-        
-        public const float MIN_SCALE = 0.1f;
-        public const float MAX_SCALE = 10f;
-        
-        public override void Init(MyObjectBuilder_EntityBase objectBuilder)
-        {
-            Entity.NeedsUpdate |= MyEntityUpdateEnum.EACH_FRAME;
-        }
-        
-        public override MyObjectBuilder_EntityBase GetObjectBuilder(bool copy = false)
-        {
-            return Entity.GetObjectBuilder(copy);
-        }
-        
-        private void FirstUpdate()
-        {
-            var block = Entity as IMyTerminalBlock;
-            
-            if(block.CubeGrid.Physics == null)
-                return;
-            
-            gridSize = block.CubeGrid.GridSize;
-            NameChanged(block);
-            LegacyStorage();
-            block.CustomNameChanged += NameChanged;
-            
-            //if(!terminalUI)
-            //{
-            //    terminalUI = true;
-            //    CreateControls<IMyProjector>();
-            //}
-        }
-        
-        public override void Close()
-        {
-            try
-            {
-                RemoveCustomProjection();
-                var block = Entity as IMyTerminalBlock;
-                block.CustomNameChanged -= NameChanged;
-            }
-            catch(Exception e)
-            {
-                Log.Error(e);
-            }
-        }
-        
-        private void RemoveCustomProjection()
-        {
-            skip = 0;
-            statusIndex = 0;
-            statusCache = null;
-            statusPrevColors = null;
-            
-            if(customProjection != null)
-            {
-                customProjection.Close();
-                customProjection = null;
-            }
-        }
-        
-        private void CheckAndSpawnProjection()
-        {
-            var projector = Entity as IMyProjector;
-            
-            if(customProjection != null || projector.ProjectedGrid == null)
-                return;
-            
-            var obj = projector.ProjectedGrid.GetObjectBuilder(false) as MyObjectBuilder_CubeGrid;
-            obj.IsStatic = true;
-            obj.CreatePhysics = false;
-            obj.OxygenAmount = null;
-            obj.DestructibleBlocks = false;
-            obj.IsRespawnGrid = false;
-            obj.EnableSmallToLargeConnections = false;
-            obj.JumpDriveDirection = null;
-            obj.JumpRemainingTime = null;
-            MyAPIGateway.Entities.RemapObjectBuilder(obj);
-            customProjection = MyAPIGateway.Entities.CreateFromObjectBuilderNoinit(obj) as MyCubeGrid;
-            customProjection.IsPreview = true;
-            customProjection.SyncFlag = false;
-            customProjection.Save = false;
-            customProjection.Render.CastShadows = false; // does nothing
-            customProjection.Render.Transparency = TRANSPARENCY_GRID;
-            customProjection.Init(obj);
-            
-            foreach(var fatBlock in customProjection.GetFatBlocks())
-            {
-                SetTransparencyForSubparts(fatBlock, TRANSPARENCY_FATBLOCK);
-                fatBlock.NeedsUpdate = MyEntityUpdateEnum.NONE; // disable any logic
-            }
-            
-            MyAPIGateway.Entities.AddEntity(customProjection);
-            
-            // TODO remove edges somehow?
-            //foreach(var internalSlim in customProjection.GetBlocks())
-            //{
-            //    var slim = internalSlim as IMySlimBlock;
-            //
-            //    if(slim.FatBlock == null)
-            //    {
-            //        customProjection.SetBlockDirty(internalSlim);
-            //        //slim.UpdateVisual();
-            //    }
-            //}
-            //
-            //customProjection.UpdateDirty();
-            
-            absMax = (projector.ProjectedGrid.Max - projector.ProjectedGrid.Min).AbsMax() * projector.CubeGrid.GridSize;
-            
-            projector.ProjectedGrid.Close();
-        }
-        
-        public override void UpdateAfterSimulation()
-        {
-            try
-            {
-                if(first)
                 {
-                    first = false;
-                    FirstUpdate();
-                }
-                
-                var projector = Entity as IMyProjector;
-                
-                if(propertiesChanged > 0 && --propertiesChanged <= 0)
-                {
-                    SaveToName();
-                }
-                
-                if(turnOn > 0 && MyAPIGateway.Multiplayer.IsServer && DateTime.UtcNow.Ticks > turnOn)
-                {
-                    turnOn = 0;
-                    projector.RequestEnable(true);
-                }
-                
-                if(!preview || !projector.IsWorking || !projector.IsProjecting) // if projector wants to project this returns true, even if the projected grid is null which is useful here
-                {
-                    if(customProjection != null && !preview && MyAPIGateway.Multiplayer.IsServer)
-                    {
-                        turnOn = DateTime.UtcNow.Ticks + (TimeSpan.TicksPerMillisecond * 500);
-                        projector.RequestEnable(false);
-                    }
-                    
-                    RemoveCustomProjection();
-                    return;
-                }
-                
-                if(++skip >= 30)
-                {
-                    skip = 0;
-                    visible = (Vector3D.DistanceSquared(MyAPIGateway.Session.Camera.WorldMatrix.Translation, projector.WorldMatrix.Translation) <= (MAX_RANGE_SQ * scale));
-                    CheckAndSpawnProjection();
-                }
-                
-                if(customProjection == null)
-                    return;
-                
-                customProjection.Render.Visible = visible;
-                
-                if(visible)
-                {
-                    if(status)
-                    {
-                        var realGrid = (projector.CubeGrid as IMyCubeGrid);
-                        
-                        if(statusCache == null)
-                        {
-                            statusCache = new List<IMySlimBlock>(customProjection.CubeBlocks);
-                            statusPrevColors = new Dictionary<Vector3I, Vector3>(statusCache.Count);
-                            
-                            foreach(var projectedSlim in statusCache)
-                            {
-                                statusPrevColors.Add(projectedSlim.Position, projectedSlim.GetColorMask());
-                                
-                                var color = GetBlockStatusColor(projectedSlim, realGrid.GetCubeBlock(projectedSlim.Position));
-                                customProjection.ChangeColor(customProjection.GetCubeBlock(projectedSlim.Position), color);
-                                
-                                if(projectedSlim.FatBlock != null)
-                                {
-                                    var block = (projectedSlim.FatBlock as MyCubeBlock);
-                                    block.Render.ColorMaskHsv = color;
-                                    SetTransparencyForSubparts(block, TRANSPARENCY_FATBLOCK);
-                                }
-                            }
-                        }
-                        else
-                        {
-                            var blocksPerTick = statusCache.Count / 120;
-                            byte scanPerTick = (byte)MathHelper.Clamp(blocksPerTick, 1, 50);
-                            byte paintPerTick = (byte)MathHelper.Clamp(blocksPerTick, 1, 10);
-                            byte painted = 0;
-                            byte scanned = 0;
-                            
-                            while(++scanned <= scanPerTick)
-                            {
-                                var projectedSlim = statusCache[statusIndex];
-                                var color = GetBlockStatusColor(projectedSlim, realGrid.GetCubeBlock(projectedSlim.Position));
-                                
-                                if(++statusIndex >= statusCache.Count)
-                                    statusIndex = 0;
-                                
-                                if(Vector3.DistanceSquared(projectedSlim.GetColorMask(), color) <= 0.0001f)
-                                    continue;
-                                
-                                customProjection.ChangeColor(customProjection.GetCubeBlock(projectedSlim.Position), color);
-                                
-                                if(projectedSlim.FatBlock != null)
-                                {
-                                    var block = (projectedSlim.FatBlock as MyCubeBlock);
-                                    block.Render.ColorMaskHsv = color;
-                                    SetTransparencyForSubparts(block, TRANSPARENCY_FATBLOCK);
-                                }
-                                
-                                if(++painted > paintPerTick)
-                                    break;
-                            }
-                        }
-                    }
-                    else
-                    {
-                        if(statusCache != null)
-                        {
-                            statusCache = null;
-                            statusIndex = 0;
-                            
-                            foreach(var kv in statusPrevColors)
-                            {
-                                customProjection.ChangeColor(customProjection.GetCubeBlock(kv.Key), kv.Value);
-                            }
-                            
-                            statusPrevColors = null;
-                        }
-                    }
-                    
-                    var rescale = MathHelper.Clamp(scale / absMax, 0, 1);
-                    var matrix = projector.WorldMatrix;
-                    MatrixD.Rescale(ref matrix, rescale);
-                    
-                    matrix.Translation = (customProjection.WorldMatrix.Translation - customProjection.PositionComp.WorldAABB.Center);
-                    
-                    for(int i = 0; i < 3; i++)
-                    {
-                        var r = rotate.GetDim(i);
-                        
-                        if(Math.Abs(r) <= 0.001f)
-                        {
-                            rotateMemory.SetDim(i, 0);
-                        }
-                        else if(r < 0)
-                        {
-                            rotateMemory.SetDim(i, r);
-                        }
-                        else if(r > 0)
-                        {
-                            r = rotateMemory.GetDim(i) + ((r / 60f) % 360);
-                            
-                            if(r < 0)
-                                r += 360;
-                            
-                            rotateMemory.SetDim(i, r);
-                        }
-                    }
-                    
-                    if(Math.Abs(rotateMemory.X) > 0.001f)
-                        matrix *= MatrixD.CreateFromAxisAngle(projector.WorldMatrix.Up, MathHelper.ToRadians(rotateMemory.X));
-                    
-                    if(Math.Abs(rotateMemory.Y) > 0.001f)
-                        matrix *= MatrixD.CreateFromAxisAngle(projector.WorldMatrix.Right, MathHelper.ToRadians(rotateMemory.Y));
-                    
-                    if(Math.Abs(rotateMemory.Z) > 0.001f)
-                        matrix *= MatrixD.CreateFromAxisAngle(projector.WorldMatrix.Backward, MathHelper.ToRadians(rotateMemory.Z));
-                    
-                    matrix.Translation = projector.WorldMatrix.Translation + (customProjection.WorldMatrix.Translation - customProjection.PositionComp.WorldAABB.Center);
-                    matrix.Translation += ((offset.X * projector.WorldMatrix.Right) + ((offset.Y + projector.CubeGrid.GridSize) * projector.WorldMatrix.Up) + (offset.Z * projector.WorldMatrix.Backward));
-                    
-                    customProjection.WorldMatrix = matrix;
-                    customProjection.PositionComp.Scale = rescale;
+                    var a = MyAPIGateway.TerminalControls.CreateAction<T>(CONTROL_PREFIX + id + "_Off");
+                    a.Name = new StringBuilder(name).Append(" Off");
+                    a.Icon = iconOff;
+                    a.ValidForGroups = true;
+                    a.Action = (b) => c.Setter(b, false);
+                    if(writer != null)
+                        a.Writer = writer;
+
+                    MyAPIGateway.TerminalControls.AddAction<T>(a);
                 }
             }
-            catch(Exception e)
-            {
-                Log.Error(e);
-            }
         }
-        
-        private static void SetTransparencyForSubparts(MyEntity entity, float transparency)
+
+        private void CreateAction<T>(IMyTerminalControlSlider c,
+            float defaultValue = 0f, // HACK terminal controls don't have a default value built in...
+            float modifier = 1f,
+            string iconReset = null,
+            string iconIncrease = null,
+            string iconDecrease = null,
+            bool gridSizeDefaultValue = false) // hacky quick way to get a dynamic default value depending on grid size)
         {
-            entity.Render.RemoveRenderObjects();
-            entity.Render.Transparency = transparency;
-            entity.Render.AddRenderObjects();
-            
-            if(entity.Subparts == null)
-                return;
-            
-            foreach(var e in entity.Subparts.Values)
+            var id = ((IMyTerminalControl)c).Id;
+            var name = c.Title.String;
+
+            if(iconReset == null && iconIncrease == null && iconDecrease == null)
             {
-                SetTransparencyForSubparts(e, transparency);
+                var gamePath = MyAPIGateway.Utilities.GamePaths.ContentPath;
+                iconReset = gamePath + @"\Textures\GUI\Icons\Actions\Reset.dds";
+                iconIncrease = gamePath + @"\Textures\GUI\Icons\Actions\Increase.dds";
+                iconDecrease = gamePath + @"\Textures\GUI\Icons\Actions\Decrease.dds";
+            }
+
+            {
+                var a = MyAPIGateway.TerminalControls.CreateAction<T>(CONTROL_PREFIX + id + "_Reset");
+                a.Name = new StringBuilder("(Preview) Reset ").Append(name);
+                if(!gridSizeDefaultValue)
+                    a.Name.Append(" (").Append(defaultValue.ToString("0.###")).Append(")");
+                a.Icon = iconReset;
+                a.ValidForGroups = true;
+                a.Action = (b) => c.Setter(b, (gridSizeDefaultValue ? b.CubeGrid.GridSize : defaultValue));
+                a.Writer = (b, s) => s.Append(c.Getter(b));
+
+                MyAPIGateway.TerminalControls.AddAction<T>(a);
+            }
+            {
+                var a = MyAPIGateway.TerminalControls.CreateAction<T>(CONTROL_PREFIX + id + "_Increase");
+                a.Name = new StringBuilder("(Preview) Increase ").Append(name).Append(" (+").Append(modifier.ToString("0.###")).Append(")");
+                a.Icon = iconIncrease;
+                a.ValidForGroups = true;
+                a.Action = (b) => c.Setter(b, c.Getter(b) + modifier);
+                a.Writer = (b, s) => s.Append(c.Getter(b));
+
+                MyAPIGateway.TerminalControls.AddAction<T>(a);
+            }
+            {
+                var a = MyAPIGateway.TerminalControls.CreateAction<T>(CONTROL_PREFIX + id + "_Decrease");
+                a.Name = new StringBuilder("(Preview) Decrease ").Append(name).Append(" (-").Append(modifier.ToString("0.###")).Append(")");
+                a.Icon = iconDecrease;
+                a.ValidForGroups = true;
+                a.Action = (b) => c.Setter(b, c.Getter(b) - modifier);
+                a.Writer = (b, s) => s.Append(c.Getter(b).ToString("0.###"));
+
+                MyAPIGateway.TerminalControls.AddAction<T>(a);
             }
         }
-        
-        private static Vector3 GetBlockStatusColor(IMySlimBlock projectedSlim, IMySlimBlock realSlim)
+
+        private void CreateAction<T>(IMyTerminalControlCombobox c,
+            string[] itemIds = null,
+            string[] itemNames = null,
+            string icon = null)
         {
-            if(realSlim == null)
-                return Color.DarkRed.ColorToHSVDX11();
-            
-            Vector3 color;
-            
-            if(realSlim != null)
+            var items = new List<MyTerminalControlComboBoxItem>();
+            c.ComboBoxContent.Invoke(items);
+
+            foreach(var item in items)
             {
-                if(realSlim.FatBlock != null && projectedSlim.FatBlock != null)
-                {
-                    var realDef = realSlim.FatBlock.BlockDefinition;
-                    var projectedDef = projectedSlim.FatBlock.BlockDefinition;
-                    
-                    if(realDef.TypeId != projectedDef.TypeId || realDef.SubtypeId != projectedDef.SubtypeId)
-                    {
-                        return Color.Purple.ColorToHSVDX11();
-                    }
-                }
-                else if(realSlim.FatBlock == null && projectedSlim.FatBlock == null && realSlim.ToString() != projectedSlim.ToString())
-                {
-                    return Color.Purple.ColorToHSVDX11();
-                }
-                
-                float realIntegrity = Math.Max(realSlim.BuildIntegrity - realSlim.CurrentDamage, 0);
-                float realIntegrityRatio = realIntegrity / realSlim.MaxIntegrity;
-                float projectedIntegrity = projectedSlim.BuildIntegrity / projectedSlim.MaxIntegrity;
-                
-                if(realIntegrityRatio < projectedIntegrity)
-                {
-                    var realBlock = realSlim.FatBlock as MyCubeBlock;
-                    
-                    if(realBlock != null)
-                    {
-                        float critRatio = realIntegrityRatio - realBlock.BlockDefinition.CriticalIntegrityRatio;
-                        float ratio = 0;
-                        
-                        if(critRatio > 0)
-                        {
-                            ratio = critRatio / (1f - realBlock.BlockDefinition.CriticalIntegrityRatio);
-                            
-                            color.X = MathHelper.Lerp(10f/360f, 75f/360f, ratio);
-                            color.Y = 1;
-                            color.Z = 1;
-                            return color;
-                        }
-                        else
-                        {
-                            ratio = realIntegrityRatio / realBlock.BlockDefinition.CriticalIntegrityRatio;
-                            
-                            color.X = MathHelper.Lerp(0f/360f, 10f/360f, ratio);
-                            color.Y = 1;
-                            color.Z = 1;
-                            return color;
-                        }
-                    }
-                    else
-                    {
-                        color.X = MathHelper.Lerp(0f/360f, 75f/360f, realIntegrityRatio);
-                        color.Y = 1;
-                        color.Z = 1;
-                        return color;
-                    }
-                }
-            }
-            
-            color.X = 0;
-            color.Y = -1;
-            color.Z = 0;
-            return color;
-        }
-        
-        public void NameChanged(IMyTerminalBlock block)
-        {
-            try
-            {
-                ResetSettings(); // first reset fields
-                
-                var name = block.CustomName.ToLower();
-                var startIndex = name.IndexOf(DATA_TAG_START, StringComparison.OrdinalIgnoreCase);
-                
-                if(startIndex == -1)
-                    return;
-                
-                startIndex += DATA_TAG_START.Length;
-                var endIndex = name.IndexOf(DATA_TAG_END, startIndex);
-                
-                if(endIndex == -1)
-                    return;
-                
-                var data = name.Substring(startIndex, (endIndex - startIndex)).Split(DATA_SEPARATOR);
-                
-                foreach(var d in data)
-                {
-                    var kv = d.Split(DATA_KEYVALUE_SEPARATOR);
-                    
-                    switch(kv[0])
-                    {
-                        case "preview":
-                            preview = true;
-                            break;
-                        case "scale":
-                            scale = MathHelper.Clamp(float.Parse(kv[1]), MIN_SCALE, Math.Min(absMax, MAX_SCALE));
-                            break;
-                        case "status":
-                            status = true;
-                            break;
-                        case "offset":
-                            offset = new Vector3(float.Parse(kv[1]), float.Parse(kv[2]), float.Parse(kv[3]));
-                            break;
-                        case "rotate":
-                            rotate = new Vector3(float.Parse(kv[1]), float.Parse(kv[2]), float.Parse(kv[3]));
-                            break;
-                        default:
-                            Log.Error("Unknown key in name: '"+kv[0]+"', data raw: '"+block.CustomName+"'");
-                            break;
-                    }
-                }
-            }
-            catch(Exception e)
-            {
-                Log.Error(e);
+                var id = (itemIds == null ? item.Value.String : itemIds[item.Key]);
+
+                if(id == null)
+                    continue; // item id is null intentionally in the array, this means "don't add action".
+
+                var a = MyAPIGateway.TerminalControls.CreateAction<T>(CONTROL_PREFIX + id);
+                a.Name = new StringBuilder(itemNames == null ? item.Value.String : itemNames[item.Key]);
+                if(icon != null)
+                    a.Icon = icon;
+                a.ValidForGroups = true;
+                a.Action = (b) => c.Setter(b, item.Key);
+                //if(writer != null)
+                //    a.Writer = writer;
+
+                MyAPIGateway.TerminalControls.AddAction<T>(a);
             }
         }
-        
-        public void ResetSettings()
-        {
-            preview = false;
-            scale = gridSize;
-            status = false;
-            offset = Vector3.Zero;
-            rotate = Vector3.Zero;
-        }
-        
-        public bool AreSettingsDefault()
-        {
-            return !(preview
-                     || Math.Abs(scale - gridSize) >= 0.001f
-                     || status
-                     || offset.LengthSquared() > 0
-                     || rotate.LengthSquared() > 0);
-        }
-        
-        private void SaveToName(string forceName = null)
-        {
-            var block = Entity as IMyTerminalBlock;
-            var trimmedName = (forceName ?? GetNameNoData());
-            
-            if(AreSettingsDefault())
-            {
-                if(block.CustomName.Length != trimmedName.Length)
-                    block.SetCustomName(trimmedName);
-                
-                return;
-            }
-            
-            str.Clear();
-            str.Append(trimmedName);
-            str.Append(' ', 3);
-            str.Append(DATA_TAG_START);
-            
-            if(preview)
-            {
-                str.Append("preview");
-                str.Append(DATA_SEPARATOR);
-            }
-            
-            if(Math.Abs(scale - gridSize) >= 0.001f)
-            {
-                str.Append("scale").Append(DATA_KEYVALUE_SEPARATOR).Append(scale);
-                str.Append(DATA_SEPARATOR);
-            }
-            
-            if(status)
-            {
-                str.Append("status");
-                str.Append(DATA_SEPARATOR);
-            }
-            
-            if(offset.LengthSquared() > 0)
-            {
-                str.Append("offset");
-                str.Append(DATA_KEYVALUE_SEPARATOR).Append(offset.X);
-                str.Append(DATA_KEYVALUE_SEPARATOR).Append(offset.Y);
-                str.Append(DATA_KEYVALUE_SEPARATOR).Append(offset.Z);
-                str.Append(DATA_SEPARATOR);
-            }
-            
-            if(rotate.LengthSquared() > 0)
-            {
-                str.Append("rotate");
-                str.Append(DATA_KEYVALUE_SEPARATOR).Append(rotate.X);
-                str.Append(DATA_KEYVALUE_SEPARATOR).Append(rotate.Y);
-                str.Append(DATA_KEYVALUE_SEPARATOR).Append(rotate.Z);
-                str.Append(DATA_SEPARATOR);
-            }
-            
-            if(str[str.Length - 1] == DATA_SEPARATOR) // remove the last DATA_SEPARATOR character
-                str.Length -= 1;
-            
-            str.Append(DATA_TAG_END);
-            
-            block.SetCustomName(str.ToString());
-        }
-        
-        private string GetNameNoData()
-        {
-            var block = Entity as IMyTerminalBlock;
-            var name = block.CustomName;
-            var startIndex = name.IndexOf(DATA_TAG_START, StringComparison.OrdinalIgnoreCase);
-            
-            if(startIndex == -1)
-                return name;
-            
-            var nameNoData = name.Substring(0, startIndex);
-            var endIndex = name.IndexOf(DATA_TAG_END, startIndex);
-            
-            if(endIndex == -1)
-                return nameNoData.Trim();
-            else
-                return (nameNoData + name.Substring(endIndex + 1)).Trim();
-        }
-        
-        // legacy name tags support
-        
-        private static readonly Regex previewRegex = new Regex(@"([@+]preview\:)(-?[\.\d]+)", RegexOptions.Compiled);
-        private static readonly Regex spinRegex = new Regex(@"([@+]spin\:)(-?[\.\d]+)", RegexOptions.Compiled);
-        
-        public void LegacyStorage()
-        {
-            try
-            {
-                var block = Entity as IMyProjector;
-                string name = block.CustomName;
-                
-                if(string.IsNullOrEmpty(name))
-                    return;
-                
-                name = name.ToLower();
-                
-                if(name.Contains("@preview") || name.Contains("+preview"))
-                {
-                    preview = true;
-                    var match = previewRegex.Match(name);
-                    string finalCustomName = block.CustomName;
-                    
-                    if(match.Success)
-                    {
-                        finalCustomName = previewRegex.Replace(finalCustomName, "");
-                        float num;
-                        
-                        if(float.TryParse(match.Groups[2].Value, out num))
-                        {
-                            scale = MathHelper.Clamp(num, 0.1f, 5f);
-                        }
-                    }
-                    else
-                    {
-                        finalCustomName = finalCustomName.Replace("@preview", "");
-                        finalCustomName = finalCustomName.Replace("+preview", "");
-                        scale = 1;
-                    }
-                    
-                    if(name.Contains("@spin") || name.Contains("+spin"))
-                    {
-                        rotate.X = 60;
-                        match = spinRegex.Match(name);
-                        
-                        if(match.Success)
-                        {
-                            finalCustomName = spinRegex.Replace(finalCustomName, "");
-                            float num;
-                            
-                            if(float.TryParse(match.Groups[2].Value, out num))
-                            {
-                                rotate.X = MathHelper.Clamp(num * 60, -360, 360);
-                            }
-                        }
-                        else
-                        {
-                            finalCustomName = finalCustomName.Replace("@spin", "");
-                            finalCustomName = finalCustomName.Replace("+spin", "");
-                        }
-                    }
-                    
-                    if(name.Contains("@status") || name.Contains("+status"))
-                    {
-                        status = true;
-                        finalCustomName = finalCustomName.Replace("@status", "");
-                        finalCustomName = finalCustomName.Replace("+status", "");
-                    }
-                    
-                    SaveToName(finalCustomName.Trim());
-                }
-            }
-            catch(Exception e)
-            {
-                Log.Error(e);
-            }
-        }
+        #endregion
     }
 }

@@ -1,0 +1,14 @@
+<Definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <EntityComponents>
+    <EntityComponent xsi:type="MyObjectBuilder_ModStorageComponentDefinition">
+      <Id>
+        <TypeId>ModStorageComponent</TypeId>
+        <SubtypeId>ProjectorPreview</SubtypeId>
+      </Id>
+      <RegisteredStorageGuids>
+        <guid>1F2F7BAA-31BA-4E75-82C4-FA29679DE822</guid>
+        <guid>E973AD49-F3F4-41B9-811B-2B114E6EE0F9</guid>
+      </RegisteredStorageGuids>
+    </EntityComponent>
+  </EntityComponents>
+</Definitions>
