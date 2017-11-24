@@ -23,6 +23,8 @@ namespace Digi.ProjectorPreview
             Log.SetUp("Projector Preview", 517675282, "ProjectorPreview");
         }
 
+        public static bool DEBUG => false;
+
         public static ProjectorPreviewMod Instance = null;
         public static bool IsInProjectorTerminal => Instance.ViewingTerminalOf != null;
 
@@ -41,7 +43,6 @@ namespace Digi.ProjectorPreview
         public readonly List<IMyTerminalControl> RefreshControls = new List<IMyTerminalControl>(); // controls to be refreshed on certain actions
         private bool createdTerminalControls = false;
 
-        public const bool DEBUG = false;
         public const ushort PACKET_ID = 62528;
         public readonly Guid SETTINGS_GUID = new Guid("1F2F7BAA-31BA-4E75-82C4-FA29679DE822");
         public readonly Guid BLUEPRINT_GUID = new Guid("E973AD49-F3F4-41B9-811B-2B114E6EE0F9");
@@ -386,7 +387,7 @@ namespace Digi.ProjectorPreview
                     // add the button
                     ControlRemoveButton = vc;
                     SortedControls.Add(vc);
-                    
+
                     // add controls right after the button
                     SortedControls.Add(tc.CreateControl<IMyTerminalControlSeparator, T>(string.Empty));
                     SortedControls.Add(ControlPreview);

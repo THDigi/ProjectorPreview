@@ -1657,7 +1657,7 @@ namespace Digi.ProjectorPreview
             if(slim.FatBlock != null)
             {
                 var block = (MyCubeBlock)slim.FatBlock;
-                var seeThrough = Settings.SeeThrough && ProjectorPreviewMod.Instance.DECORATIVE_TYPES.Contains(block.BlockDefinition.Id.TypeId);
+                var seeThrough = Settings.SeeThrough && mod.DECORATIVE_TYPES.Contains(block.BlockDefinition.Id.TypeId);
 
                 if(blink && blinkMemory)
                 {
@@ -1696,11 +1696,13 @@ namespace Digi.ProjectorPreview
         {
             ent.Render.Transparency = transparency;
             ent.Render.CastShadows = false;
-            ent.Render.RemoveRenderObjects();
-            ent.Render.AddRenderObjects();
+
+            //ent.Render.RemoveRenderObjects();
+            //ent.Render.AddRenderObjects();
 
             // HACK Add/RemoveRenderObjects() and slim.Dithering have issues...
-            // not calling Add/RemoveRenderObjects() on armor block in construction stage it will not update its transparency.
+            // not calling Add/RemoveRenderObjects() on armor block in construction stage it will not update its transparency (? seems to not happen anymore)
+            // calling Add/RemoveRenderObjects() causes subparts do detach when setting transparency after spawn (status mode toggle)
             // calling slim.Dithering on turrets after calling this will cause the subpart to be opaque.
             // calling slim.Dithering before any non-armor block will cause ARMOR BLOCKS to cast shadows even if `.Render.CastShadows = false` on both the block and the grid (yeah, makes no sense).
             // and probably more...
