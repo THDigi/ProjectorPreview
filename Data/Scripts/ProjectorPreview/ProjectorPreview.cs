@@ -12,6 +12,7 @@ using VRage.ObjectBuilders;
 using VRage.Utils;
 using VRageMath;
 
+#pragma warning disable CS0162 // Unreachable code detected
 namespace Digi.ProjectorPreview
 {
     [MySessionComponentDescriptor(MyUpdateOrder.BeforeSimulation)]
@@ -23,7 +24,7 @@ namespace Digi.ProjectorPreview
             Log.SetUp("Projector Preview", 517675282, "ProjectorPreview");
         }
 
-        public static bool DEBUG => false;
+        public const bool DEBUG = false;
 
         public static ProjectorPreviewMod Instance = null;
         public static bool IsInProjectorTerminal => Instance.ViewingTerminalOf != null;

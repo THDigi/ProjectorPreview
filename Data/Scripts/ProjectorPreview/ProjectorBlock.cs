@@ -23,6 +23,7 @@ using VRageMath;
 
 // TODO: sometimes it gets desynchronized (probably because of 2+ projectors?) and client rejoin causes ghost hologram grid to be seen AND physicsless solid-looking grid to be seen
 
+#pragma warning disable CS0162 // Unreachable code detected
 namespace Digi.ProjectorPreview
 {
     [MyEntityComponentDescriptor(typeof(MyObjectBuilder_Projector), useEntityUpdate: false)]
@@ -326,7 +327,7 @@ namespace Digi.ProjectorPreview
         public static bool UI_RemoveButton_Enabled(IMyTerminalBlock block)
         {
             var logic = GetLogic(block);
-            return (logic == null ? false : (logic.projector.IsWorking && (logic.projector.IsProjecting || logic.OriginalBlueprint != null)));
+            return (logic == null ? false : (logic.projector.IsProjecting || logic.OriginalBlueprint != null));
         }
 
         public static void UI_RemoveButton_Action(IMyTerminalBlock block)
