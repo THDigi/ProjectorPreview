@@ -1373,7 +1373,6 @@ namespace Digi.ProjectorPreview
                         if(!(block is IMyLargeGatlingTurret))
                             block.NeedsUpdate = MyEntityUpdateEnum.NONE;
 
-                        block.GameLogic = NULL_GAMELOGIC_COMPONENT;
                         block.StopDamageEffect(); // HACK because projected blocks still have damage effects for some reason
 
                         if(block.UseObjectsComponent.DetectorPhysics != null && block.UseObjectsComponent.DetectorPhysics.Enabled)
@@ -1382,9 +1381,6 @@ namespace Digi.ProjectorPreview
                 }
 
                 CustomProjection.NeedsUpdate = MyEntityUpdateEnum.NONE;
-                CustomProjection.GameLogic = NULL_GAMELOGIC_COMPONENT;
-                CustomProjection.Components.Remove<MyShipSoundComponent>();
-                CustomProjection.Components.Remove<MyGridTargeting>();
 
                 MyAPIGateway.Entities.AddEntity(CustomProjection);
                 needsMatrixUpdate = true;
