@@ -21,8 +21,6 @@ using VRage.ObjectBuilders;
 using VRage.Utils;
 using VRageMath;
 
-// TODO: sometimes it gets desynchronized (probably because of 2+ projectors?) and client rejoin causes ghost hologram grid to be seen AND physicsless solid-looking grid to be seen
-
 #pragma warning disable CS0162 // Unreachable code detected
 namespace Digi.ProjectorPreview
 {
@@ -80,7 +78,8 @@ namespace Digi.ProjectorPreview
         #region Constants
         private enum BlockStatus : byte { MISSING, WRONG_TYPE, WRONG_ROTATION }
 
-        private const float PROJECTION_RANGE_SQ = 50 * 50; // squared range at which projection vanishes. this value is multiplied by the projection scale squared.
+        private const float PROJECTION_RANGE_ADD_SQ = 10 * 10; // squared range to add to the multiplier, effectively a minimum view distance
+        private const float PROJECTION_RANGE_SCALE_SQ = 50 * 50; // squared range at which projection vanishes. this value is multiplied by the projection scale squared.
         private const byte COOLDOWN_PREVIEW = 30; // cooldown after toggling preview mode, in ticks
         private const byte COOLDOWN_USETHISSHIP = 60 * 3; // cooldown after pressing the "Use this ship" button, in ticks
         private const byte SETTINGS_SAVE_COUNTDOWN = 30; // ticks to wait before saving or synchronizing settings after a setting was touched
@@ -101,17 +100,21 @@ namespace Digi.ProjectorPreview
         private readonly Vector3 STATUS_COLOR_WRONG_COLOR = new Color(55, 0, 155).ColorToHSVDX11();
         private readonly Vector3 STATUS_COLOR_WRONG_ROTATION = new Color(0, 155, 255).ColorToHSVDX11();
 
-        private const float LIGHT_DETAIL_RADIUS_MUL = 10f;
-        private const float LIGHT_DETAIL_FALLOFF = 0.01f;
-        private const float LIGHT_DETAIL_INTENSITY = 5f;
+        private const float LIGHT_DETAIL_RADIUS_START = 2f;
+        private const float LIGHT_DETAIL_RADIUS_MUL = 1f;
+        private const float LIGHT_DETAIL_FALLOFF = 1f;
+        private const float LIGHT_DETAIL_INTENSITY = 3f;
 
-        private const float LIGHT_CENTER_RADIUS_MUL = 10f;
-        private const float LIGHT_CENTER_FALLOFF = 0.05f;
+        private const float LIGHT_CENTER_RADIUS_START = 3f;
+        private const float LIGHT_CENTER_RADIUS_MUL = 2f;
+        private const float LIGHT_CENTER_FALLOFF = 1f;
         private const float LIGHT_CENTER_INTENSITY = 5f;
 
-        private const float LIGHT_CENTER_RADIUS_MUL_FAR = 7.5f;
-        private const float LIGHT_CENTER_FALLOFF_MUL_FAR = 0.0225f;
-        private const float LIGHT_CENTER_INTENSITY_FAR = LIGHT_CENTER_INTENSITY;
+        // same light as center but the detail lights are hidden so this needs tweaked to look similar
+        private const float LIGHT_FAR_RADIUS_START = 3f;
+        private const float LIGHT_FAR_RADIUS_MUL = 1.7f;
+        private const float LIGHT_FAR_FALLOFF = LIGHT_CENTER_FALLOFF;
+        private const float LIGHT_FAR_INTENSITY = 10f;
         private const float LIGHT_CENTER_VIEW_RANGE_SQ = 300 * 300; // squared range at which light gets turned off. this value is multiplied by the projection scale squared.
 
         private readonly MyNullGameLogicComponent NULL_GAMELOGIC_COMPONENT = new MyNullGameLogicComponent();
@@ -928,13 +931,13 @@ namespace Digi.ProjectorPreview
 
                         if(!projectionVisible)
                         {
-                            l.Range = Settings.Scale * LIGHT_CENTER_RADIUS_MUL_FAR;
-                            l.Falloff = Settings.Scale * LIGHT_CENTER_FALLOFF_MUL_FAR;
-                            l.Intensity = LIGHT_CENTER_INTENSITY_FAR;
+                            l.Range = LIGHT_FAR_RADIUS_START + (Settings.Scale * LIGHT_FAR_RADIUS_MUL);
+                            l.Falloff = LIGHT_FAR_FALLOFF;
+                            l.Intensity = LIGHT_FAR_INTENSITY;
                         }
                         else
                         {
-                            l.Range = Settings.Scale * LIGHT_CENTER_RADIUS_MUL;
+                            l.Range = LIGHT_CENTER_RADIUS_START + (Settings.Scale * LIGHT_CENTER_RADIUS_MUL);
                             l.Falloff = LIGHT_CENTER_FALLOFF;
                             l.Intensity = LIGHT_CENTER_INTENSITY;
                         }
@@ -952,7 +955,7 @@ namespace Digi.ProjectorPreview
 
                                 l.LightOn = true;
                                 l.Position = Vector3D.Transform(corners[i - 1], CustomProjection.WorldMatrix);
-                                l.Range = Settings.Scale * LIGHT_DETAIL_RADIUS_MUL;
+                                l.Range = LIGHT_DETAIL_RADIUS_START + (Settings.Scale * LIGHT_DETAIL_RADIUS_MUL);
                                 l.UpdateLight();
                             }
                         }
@@ -1246,7 +1249,7 @@ namespace Digi.ProjectorPreview
                 var distance = diff.LengthSquared();
                 var scaleSq = Settings.Scale * Settings.Scale;
 
-                projectionVisible = (distance <= (PROJECTION_RANGE_SQ * scaleSq));
+                projectionVisible = (distance <= (PROJECTION_RANGE_ADD_SQ + (PROJECTION_RANGE_SCALE_SQ * scaleSq)));
                 lodLightVisible = (distance <= (LIGHT_CENTER_VIEW_RANGE_SQ * scaleSq));
 
                 // set emissivity to match the projector's vanilla projecting state
@@ -1391,7 +1394,7 @@ namespace Digi.ProjectorPreview
                 SetLargestGridLength(CustomProjection);
 
                 var box = CustomProjection.PositionComp.LocalAABB;
-                box.Inflate(CustomProjection.GridSize); // make bbox 1 block larger
+                box.Inflate(CustomProjection.GridSize); // offset the corners outwards to allow lights to light the surfaces properly
                 box.GetCorners(corners); // store local corner vectors, to be used with lights
 
                 for(int i = 0; i < lights.Length; ++i)

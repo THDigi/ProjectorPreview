@@ -12,6 +12,8 @@ using VRage.ObjectBuilders;
 using VRage.Utils;
 using VRageMath;
 
+// TODO block place/remove sync between real grid and projected grid
+
 #pragma warning disable CS0162 // Unreachable code detected
 namespace Digi.ProjectorPreview
 {
