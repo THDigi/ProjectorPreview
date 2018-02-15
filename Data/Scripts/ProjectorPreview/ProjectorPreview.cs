@@ -658,6 +658,25 @@ namespace Digi.ProjectorPreview
 
                 tc.AddControl<T>(c);
             }
+
+            {
+                var c = tc.CreateControl<IMyTerminalControlSlider, T>(CONTROL_PREFIX + "LightIntensity");
+                c.Title = MyStringId.GetOrCompute("Hologram light intensity");
+                c.Tooltip = MyStringId.GetOrCompute("The intensity of the light emitted by the hologram.");
+                c.SupportsMultipleBlocks = true;
+                c.Enabled = Projector.UI_Generic_Enabled;
+                c.SetLimits(Projector.MIN_LIGHTINTENSITY, Projector.MAX_LIGHTINTENSITY);
+                c.Getter = Projector.UI_LightIntensity_Getter;
+                c.Setter = Projector.UI_LightIntensity_Setter;
+                c.Writer = Projector.UI_LightIntensity_Writer;
+
+                CreateAction<T>(c, modifier: 0.1f);
+
+                SortedControls.Add(c);
+                RefreshControls.Add(c);
+
+                tc.AddControl<T>(c);
+            }
             #endregion
         }
 

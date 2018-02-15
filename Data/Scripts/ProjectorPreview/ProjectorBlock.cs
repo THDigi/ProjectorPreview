@@ -92,6 +92,8 @@ namespace Digi.ProjectorPreview
         public const float MAX_SCALE = 10f;
         public const float MIN_MAX_OFFSET = 10f; // Offset slider min/max
         public const float MIN_MAX_ROTATE = 360f; // Rotate slider min/max
+        public const float MIN_LIGHTINTENSITY = 0f; // Light intensity slider
+        public const float MAX_LIGHTINTENSITY = 5f;
 
         private readonly Vector3 STATUS_COLOR_NORMAL = new Color(0, 0, 0).ColorToHSVDX11();
         private readonly Vector3 STATUS_COLOR_BETTER = new Color(0, 255, 0).ColorToHSVDX11();
@@ -195,6 +197,16 @@ namespace Digi.ProjectorPreview
 
             if(ProjectorPreviewMod.IsInProjectorTerminal)
                 ProjectorPreviewMod.Instance?.ControlRotate[axis]?.UpdateVisual();
+        }
+
+        public float LightIntensity
+        {
+            get { return Settings.LightIntensity; }
+            set
+            {
+                Settings.LightIntensity = (float)Math.Round(MathHelper.Clamp(value, MIN_LIGHTINTENSITY, MAX_LIGHTINTENSITY), 3);
+                needsMatrixUpdate = true;
+            }
         }
 
         private void CheckNeedsConstantMatrixUpdate()
@@ -592,6 +604,49 @@ namespace Digi.ProjectorPreview
         }
         #endregion
 
+        #region UI - LightIntensity
+        public static float UI_LightIntensity_Getter(IMyTerminalBlock block)
+        {
+            var logic = GetLogic(block);
+            return (logic == null ? 0f : logic.LightIntensity);
+        }
+
+        public static void UI_LightIntensity_Setter(IMyTerminalBlock block, float value)
+        {
+            var logic = GetLogic(block);
+
+            if(logic != null)
+            {
+                logic.LightIntensity = value;
+                logic.PropertyChanged();
+            }
+        }
+
+        public static void UI_LightIntensity_Writer(IMyTerminalBlock block, StringBuilder writer)
+        {
+            try
+            {
+                var logic = GetLogic(block);
+
+                if(logic == null)
+                    return;
+
+                if(logic.LightIntensity <= 0.0000001f)
+                {
+                    writer.Append("Off");
+                }
+                else
+                {
+                    writer.AppendFormat("{0:0.00}", logic.LightIntensity);
+                }
+            }
+            catch(Exception e)
+            {
+                Log.Error(e);
+            }
+        }
+        #endregion
+
         private static Projector GetLogic(IMyTerminalBlock b)
         {
             return b?.GameLogic?.GetAs<Projector>();
@@ -935,13 +990,13 @@ namespace Digi.ProjectorPreview
                         {
                             l.Range = LIGHT_FAR_RADIUS_START + (Settings.Scale * LIGHT_FAR_RADIUS_MUL);
                             l.Falloff = LIGHT_FAR_FALLOFF;
-                            l.Intensity = LIGHT_FAR_INTENSITY;
+                            l.Intensity = LIGHT_FAR_INTENSITY * LightIntensity;
                         }
                         else
                         {
                             l.Range = LIGHT_CENTER_RADIUS_START + (Settings.Scale * LIGHT_CENTER_RADIUS_MUL);
                             l.Falloff = LIGHT_CENTER_FALLOFF;
-                            l.Intensity = LIGHT_CENTER_INTENSITY;
+                            l.Intensity = LIGHT_CENTER_INTENSITY * LightIntensity;
                         }
 
                         l.UpdateLight();
@@ -958,6 +1013,7 @@ namespace Digi.ProjectorPreview
                                 l.LightOn = true;
                                 l.Position = Vector3D.Transform(corners[i - 1], CustomProjection.WorldMatrix);
                                 l.Range = LIGHT_DETAIL_RADIUS_START + (Settings.Scale * LIGHT_DETAIL_RADIUS_MUL);
+                                l.Intensity = LIGHT_DETAIL_INTENSITY * LightIntensity;
                                 l.UpdateLight();
                             }
                         }
@@ -1307,7 +1363,7 @@ namespace Digi.ProjectorPreview
             }
 
             // light[0] used for longer ranges
-            if(lodLightVisible)
+            if(lodLightVisible && LightIntensity > 0)
             {
                 var l = lights[0];
 

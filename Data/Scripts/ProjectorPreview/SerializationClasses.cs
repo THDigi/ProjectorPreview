@@ -31,11 +31,14 @@ namespace Digi.ProjectorPreview
         [ProtoMember(7)]
         public SpinFlags Spin = SpinFlags.NONE;
 
+        [ProtoMember(8)]
+        public float LightIntensity = 1f;
+
         // blueprint is stored separately to avoid hitches when saving these tiny settings
 
         public override string ToString()
         {
-            return $"Enabled = {Enabled}\nStatus = {Status}\nSeeThrough = {SeeThrough}\nScale = {Math.Round(Scale, 4)}\nOffset = {Math.Round(Offset.X, 4)}, {Math.Round(Offset.Y, 4)}, {Math.Round(Offset.Z, 4)}\nRotateRad = {Math.Round(RotateRad.X, 4)}, {Math.Round(RotateRad.Y, 4)}, {Math.Round(RotateRad.Z, 4)}\nSpin = {Spin}";
+            return $"Enabled = {Enabled}\nStatus = {Status}\nSeeThrough = {SeeThrough}\nScale = {Math.Round(Scale, 4)}\nOffset = {Math.Round(Offset.X, 4)}, {Math.Round(Offset.Y, 4)}, {Math.Round(Offset.Z, 4)}\nRotateRad = {Math.Round(RotateRad.X, 4)}, {Math.Round(RotateRad.Y, 4)}, {Math.Round(RotateRad.Z, 4)}\nSpin = {Spin}\nLightIntensity = {Math.Round(LightIntensity, 2)}";
         }
     }
 
