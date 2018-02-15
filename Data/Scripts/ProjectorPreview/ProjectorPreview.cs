@@ -13,6 +13,7 @@ using VRage.Utils;
 using VRageMath;
 
 // TODO block place/remove sync between real grid and projected grid
+// ^^^ needs sync of block stages, paint, and many other things...
 
 #pragma warning disable CS0162 // Unreachable code detected
 namespace Digi.ProjectorPreview

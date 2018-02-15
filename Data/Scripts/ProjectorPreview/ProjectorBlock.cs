@@ -100,21 +100,21 @@ namespace Digi.ProjectorPreview
         private readonly Vector3 STATUS_COLOR_WRONG_COLOR = new Color(55, 0, 155).ColorToHSVDX11();
         private readonly Vector3 STATUS_COLOR_WRONG_ROTATION = new Color(0, 155, 255).ColorToHSVDX11();
 
-        private const float LIGHT_DETAIL_RADIUS_START = 2f;
+        private const float LIGHT_DETAIL_RADIUS_START = 1f;
         private const float LIGHT_DETAIL_RADIUS_MUL = 1f;
         private const float LIGHT_DETAIL_FALLOFF = 1f;
-        private const float LIGHT_DETAIL_INTENSITY = 3f;
+        private const float LIGHT_DETAIL_INTENSITY = 0.2f;
 
-        private const float LIGHT_CENTER_RADIUS_START = 3f;
+        private const float LIGHT_CENTER_RADIUS_START = 2f;
         private const float LIGHT_CENTER_RADIUS_MUL = 2f;
         private const float LIGHT_CENTER_FALLOFF = 1f;
-        private const float LIGHT_CENTER_INTENSITY = 5f;
+        private const float LIGHT_CENTER_INTENSITY = 0.3f;
 
         // same light as center but the detail lights are hidden so this needs tweaked to look similar
         private const float LIGHT_FAR_RADIUS_START = 3f;
         private const float LIGHT_FAR_RADIUS_MUL = 1.7f;
         private const float LIGHT_FAR_FALLOFF = LIGHT_CENTER_FALLOFF;
-        private const float LIGHT_FAR_INTENSITY = 10f;
+        private const float LIGHT_FAR_INTENSITY = 1.0f;
         private const float LIGHT_CENTER_VIEW_RANGE_SQ = 300 * 300; // squared range at which light gets turned off. this value is multiplied by the projection scale squared.
 
         private readonly MyNullGameLogicComponent NULL_GAMELOGIC_COMPONENT = new MyNullGameLogicComponent();
