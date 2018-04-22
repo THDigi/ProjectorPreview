@@ -1171,7 +1171,7 @@ namespace Digi.ProjectorPreview
                     }
                 }
 
-                // HACK CustomInfo doesn't update, added note for players
+                // HACK CustomInfo doesn't update, added note for players; bugreport: SE-7777
                 info.AppendLine();
                 info.Append("NOTE: Update of this panel is buggy.\nClick the block again to update.");
             }
@@ -1364,11 +1364,14 @@ namespace Digi.ProjectorPreview
 
                 foreach(IMySlimBlock projectedSlim in CustomProjection.GetBlocks())
                 {
-                    originalColors.Add(projectedSlim.Position, new MyTuple<IMySlimBlock, Vector3>(projectedSlim, projectedSlim.ColorMaskHSV));
+                    // HACK IMySlimBlock.Min is not a thing and .Position can go outside of the block's box, which makes it unreliable as a unique block identifier
+                    var min = ComputeMin(projectedSlim);
+
+                    originalColors[min] = new MyTuple<IMySlimBlock, Vector3>(projectedSlim, projectedSlim.ColorMaskHSV);
 
                     SetTransparencyAndColor(projectedSlim);
 
-                    var block = (MyCubeBlock)projectedSlim.FatBlock;
+                    var block = projectedSlim.FatBlock as MyCubeBlock;
 
                     if(block != null)
                     {
@@ -1412,7 +1415,22 @@ namespace Digi.ProjectorPreview
             }
         }
 
-        private MyLight CreateLight(bool centerLight)
+        private static Vector3I ComputeMin(IMySlimBlock block)
+        {
+            var def = (MyCubeBlockDefinition)block.BlockDefinition;
+            var matrix = new MatrixI(block.Orientation);
+            var localSize = def.Size;
+            localSize.X -= 1;
+            localSize.Y -= 1;
+            localSize.Z -= 1;
+            Vector3I.TransformNormal(ref localSize, ref matrix, out localSize);
+            localSize.X = Math.Abs(localSize.X);
+            localSize.Y = Math.Abs(localSize.Y);
+            localSize.Z = Math.Abs(localSize.Z);
+            return block.Max - localSize;
+        }
+
+        private static MyLight CreateLight(bool centerLight)
         {
             var l = MyLights.AddLight();
             l.Start(centerLight ? "ProjectorCenterLight" : "ProjectorDetailLight");
@@ -1519,16 +1537,7 @@ namespace Digi.ProjectorPreview
                     if(size.X > 1 || size.Y > 1 || size.Z > 1)
                     {
                         // HACK IMySlimBlock.Position is not .Min anymore, must calculate it from .Max and offset with Size
-                        var localMatrix = new MatrixI(projectedSlim.Orientation);
-                        size.X -= 1;
-                        size.Y -= 1;
-                        size.Z -= 1;
-                        Vector3I localSize;
-                        Vector3I.TransformNormal(ref size, ref localMatrix, out localSize);
-                        localSize.X = Math.Abs(localSize.X);
-                        localSize.Y = Math.Abs(localSize.Y);
-                        localSize.Z = Math.Abs(localSize.Z);
-                        var start = projectedSlim.Max - localSize;
+                        var start = ComputeMin(projectedSlim);
                         var end = projectedSlim.Max;
                         var iterator = new Vector3I_RangeIterator(ref start, ref end);
 
