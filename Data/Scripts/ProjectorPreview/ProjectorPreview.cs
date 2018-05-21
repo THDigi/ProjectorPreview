@@ -46,6 +46,7 @@ namespace Digi.ProjectorPreview
         public readonly List<IMyTerminalControl> SortedControls = new List<IMyTerminalControl>(); // all controls properly sorted
         public readonly List<IMyTerminalControl> RefreshControls = new List<IMyTerminalControl>(); // controls to be refreshed on certain actions
         private bool createdTerminalControls = false;
+        public readonly List<IMyPlayer> Players = new List<IMyPlayer>();
 
         public const ushort PACKET_ID = 62528;
         public readonly Guid SETTINGS_GUID = new Guid("1F2F7BAA-31BA-4E75-82C4-FA29679DE822");
@@ -277,15 +278,19 @@ namespace Digi.ProjectorPreview
             distSq += 1000; // some safety padding
             distSq *= distSq;
 
-            MyAPIGateway.Players.GetPlayers(null, (p) =>
+            var players = Instance.Players;
+            players.Clear();
+            MyAPIGateway.Players.GetPlayers(players);
+
+            foreach(var p in players)
             {
                 var id = p.SteamUserId;
 
                 if(id != localSteamId && id != sender && Vector3D.DistanceSquared(p.GetPosition(), syncPosition) <= distSq)
                     MyAPIGateway.Multiplayer.SendMessageTo(PACKET_ID, bytes, p.SteamUserId);
+            }
 
-                return false; // avoid adding to the null list
-            });
+            players.Clear();
         }
         #endregion
 

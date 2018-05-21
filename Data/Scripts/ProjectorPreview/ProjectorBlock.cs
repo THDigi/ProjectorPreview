@@ -116,8 +116,6 @@ namespace Digi.ProjectorPreview
         private const float LIGHT_FAR_FALLOFF = LIGHT_CENTER_FALLOFF;
         private const float LIGHT_FAR_INTENSITY = 1.0f;
         private const float LIGHT_CENTER_VIEW_RANGE_SQ = 300 * 300; // squared range at which light gets turned off. this value is multiplied by the projection scale squared.
-
-        private readonly MyNullGameLogicComponent NULL_GAMELOGIC_COMPONENT = new MyNullGameLogicComponent();
         #endregion
 
         #region Settings properties
@@ -833,7 +831,11 @@ namespace Digi.ProjectorPreview
                             if(ProjectorPreviewMod.DEBUG)
                                 Log.Info($"playersToReceive defined:");
 
-                            MyAPIGateway.Players.GetPlayers(null, (p) =>
+                            var players = ProjectorPreviewMod.Instance.Players;
+                            players.Clear();
+                            MyAPIGateway.Players.GetPlayers(players);
+
+                            foreach(var p in players)
                             {
                                 if(p.SteamUserId != MyAPIGateway.Multiplayer.MyId && Vector3D.DistanceSquared(p.GetPosition(), projector.GetPosition()) <= worldViewRangeSq)
                                 {
@@ -842,9 +844,9 @@ namespace Digi.ProjectorPreview
                                     if(ProjectorPreviewMod.DEBUG)
                                         Log.Info($" - {p.DisplayName} ({p.SteamUserId})");
                                 }
+                            }
 
-                                return false;
-                            });
+                            players.Clear();
 
                             if(playersToReceive.Count == 0)
                             {
@@ -1786,16 +1788,21 @@ namespace Digi.ProjectorPreview
 
         private static IMyPlayer GetPlayerFromSteamId(ulong steamId)
         {
+            var players = ProjectorPreviewMod.Instance.Players;
+            players.Clear();
+            MyAPIGateway.Players.GetPlayers(players);
             IMyPlayer player = null;
 
-            MyAPIGateway.Players.GetPlayers(null, (p) =>
+            foreach(var p in players)
             {
-                if(player == null && p.SteamUserId == steamId)
+                if(p.SteamUserId == steamId)
+                {
                     player = p;
+                    break;
+                }
+            }
 
-                return false; // don't add to the list, which happens to be null
-            });
-
+            players.Clear();
             return player;
         }
     }
