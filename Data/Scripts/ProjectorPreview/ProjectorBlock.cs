@@ -1417,17 +1417,12 @@ namespace Digi.ProjectorPreview
 
         private static Vector3I ComputeMin(IMySlimBlock block)
         {
-            var def = (MyCubeBlockDefinition)block.BlockDefinition;
-            var matrix = new MatrixI(block.Orientation);
-            var localSize = def.Size;
-            localSize.X -= 1;
-            localSize.Y -= 1;
-            localSize.Z -= 1;
-            Vector3I.TransformNormal(ref localSize, ref matrix, out localSize);
-            localSize.X = Math.Abs(localSize.X);
-            localSize.Y = Math.Abs(localSize.Y);
-            localSize.Z = Math.Abs(localSize.Z);
-            return block.Max - localSize;
+            if(block.FatBlock != null)
+                return block.FatBlock.Min;
+
+            Vector3D localCenter;
+            block.ComputeScaledCenter(out localCenter);
+            return new Vector3I((localCenter - (Vector3D)block.Max) / (block.CubeGrid.GridSize * 0.5f));
         }
 
         private static MyLight CreateLight(bool centerLight)
