@@ -1366,10 +1366,7 @@ namespace Digi.ProjectorPreview
 
                 foreach(IMySlimBlock projectedSlim in CustomProjection.GetBlocks())
                 {
-                    // HACK IMySlimBlock.Min is not a thing and .Position can go outside of the block's box, which makes it unreliable as a unique block identifier
-                    var min = ComputeMin(projectedSlim);
-
-                    originalColors[min] = new MyTuple<IMySlimBlock, Vector3>(projectedSlim, projectedSlim.ColorMaskHSV);
+                    originalColors[projectedSlim.Max] = new MyTuple<IMySlimBlock, Vector3>(projectedSlim, projectedSlim.ColorMaskHSV);
 
                     SetTransparencyAndColor(projectedSlim);
 
@@ -1417,6 +1414,7 @@ namespace Digi.ProjectorPreview
             }
         }
 
+        // HACK IMySlimBlock.Min is not exposed
         private static Vector3I ComputeMin(IMySlimBlock block)
         {
             if(block.FatBlock != null)
@@ -1519,12 +1517,12 @@ namespace Digi.ProjectorPreview
             blink = false; // only blink on very specific statuses
             bool wrongRotation = false;
 
-            var projectedSlimPos = projectedSlim.Position;
+            var projectedSlimMax = projectedSlim.Max;
             IMySlimBlock realSlim = null;
 
-            if(IsInBounds(projector.CubeGrid, ref projectedSlimPos)) // avoid even looking for the real block if it's outside of the grid boundaries
+            if(IsInBounds(projector.CubeGrid, ref projectedSlimMax)) // avoid even looking for the real block if its max would be outside of grid boundary
             {
-                realSlim = projector.CubeGrid.GetCubeBlock(projectedSlimPos);
+                realSlim = projector.CubeGrid.GetCubeBlock(projectedSlimMax);
 
                 if(realSlim == null)
                 {
@@ -1533,10 +1531,8 @@ namespace Digi.ProjectorPreview
                     // if the block is larger than 1x1x1, then check the rest of its slots for obstructions
                     if(size.X > 1 || size.Y > 1 || size.Z > 1)
                     {
-                        // HACK IMySlimBlock.Position is not .Min anymore, must calculate it from .Max and offset with Size
-                        var start = ComputeMin(projectedSlim);
-                        var end = projectedSlim.Max;
-                        var iterator = new Vector3I_RangeIterator(ref start, ref end);
+                        var projectedSlimMin = ComputeMin(projectedSlim);
+                        var iterator = new Vector3I_RangeIterator(ref projectedSlimMin, ref projectedSlimMax);
 
                         while(iterator.IsValid())
                         {
@@ -1579,7 +1575,7 @@ namespace Digi.ProjectorPreview
             {
                 wrongRotation = (realSlim.Orientation.Forward != projectedSlim.Orientation.Forward
                               || realSlim.Orientation.Up != projectedSlim.Orientation.Up
-                              || realSlim.Position != projectedSlimPos);
+                              || realSlim.Max != projectedSlimMax);
             }
 
             float realIntegrity = realSlim.Integrity;
@@ -1640,12 +1636,15 @@ namespace Digi.ProjectorPreview
                 return STATUS_COLOR_WRONG_ROTATION;
             }
 
-            MyTuple<IMySlimBlock, Vector3> originalColor;
-
-            if(originalColors != null && originalColors.TryGetValue(projectedSlimPos, out originalColor) && Vector3.DistanceSquared(realSlim.ColorMaskHSV, originalColor.Item2) >= 0.0001f)
+            if(originalColors != null)
             {
-                blocksWrongColor++;
-                return STATUS_COLOR_WRONG_COLOR;
+                MyTuple<IMySlimBlock, Vector3> originalColor;
+
+                if(originalColors.TryGetValue(projectedSlimMax, out originalColor) && Vector3.DistanceSquared(realSlim.ColorMaskHSV, originalColor.Item2) >= 0.0001f)
+                {
+                    blocksWrongColor++;
+                    return STATUS_COLOR_WRONG_COLOR;
+                }
             }
 
             highlight = false;
@@ -1686,7 +1685,7 @@ namespace Digi.ProjectorPreview
             else
             {
                 if(color.HasValue && !color.Value.Equals(slim.GetColorMask(), EPSILON))
-                    CustomProjection.ChangeColor(CustomProjection.GetCubeBlock(slim.Position), color.Value);
+                    CustomProjection.ChangeColor(CustomProjection.GetCubeBlock(slim.Max), color.Value);
 
                 var transparency = (Settings.SeeThrough ? (highlight ? mod.TransparencyDecorHighlight : mod.TransparencyDecor) : (highlight ? mod.TransparencyHighlight : mod.Transparency));
 
