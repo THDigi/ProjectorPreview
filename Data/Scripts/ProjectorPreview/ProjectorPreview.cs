@@ -274,8 +274,8 @@ namespace Digi.ProjectorPreview
                 Log.Info("RelayToClients(syncPos,bytes,sender)");
 
             var localSteamId = MyAPIGateway.Multiplayer.MyId;
-            var distSq = MyAPIGateway.Session.SessionSettings.ViewDistance;
-            distSq += 1000; // some safety padding
+            var distSq = MyAPIGateway.Session.SessionSettings.SyncDistance;
+            distSq += 1000; // some safety padding, wouldn't want desync now...
             distSq *= distSq;
 
             var players = Instance.Players;
