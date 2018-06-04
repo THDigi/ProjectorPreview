@@ -1026,10 +1026,14 @@ namespace Digi.ProjectorPreview
                 #region Restore vanilla blueprint
                 if(MyAPIGateway.Multiplayer.IsServer && OriginalBlueprint != null)
                 {
-                    if(ProjectorPreviewMod.DEBUG)
-                        Log.Info($"UpdateProjection() :: restored original blueprint to projector");
+                    if(projector.ProjectedGrid == null)
+                    {
+                        if(ProjectorPreviewMod.DEBUG)
+                            Log.Info($"UpdateProjection() :: restored original blueprint to projector");
 
-                    projector.SetProjectedGrid(OriginalBlueprint); // it's synchronized, no reason to do it clientside to spam server and clients with requests
+                        projector.SetProjectedGrid(OriginalBlueprint); // it's synchronized, no reason to do it clientside to spam server and clients with requests
+                    }
+
                     OriginalBlueprint = null;
                 }
                 #endregion
