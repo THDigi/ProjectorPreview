@@ -152,7 +152,11 @@ namespace Digi.ProjectorPreview
 
         private void UpdateConfigValues()
         {
-            var cfg = MyAPIGateway.Session.Config;
+            var cfg = MyAPIGateway.Session?.Config;
+
+            if(cfg == null)
+                return;
+
             var aa = (int)(cfg.AntialiasingMode ?? 0); // HACK VRageRender.MyAntialiasingMode not whitelisted.
 
             // finalTransparency = (SeeThrough && BlockIsDecor ? (highlight ? TransparencyDecorHighlight : TransparencyDecor) : (highlight ? TransparencyHighlight : Transparency))
