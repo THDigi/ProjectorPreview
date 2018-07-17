@@ -32,7 +32,7 @@ namespace Digi.ProjectorPreview
 
             MyAPIGateway.Entities.RemapObjectBuilder(bp);
 
-            var ent = (MyCubeGrid)MyEntities.CreateFromObjectBuilder(bp, false);
+            var ent = (MyCubeGrid)MyEntities.CreateFromObjectBuilder(bp);
 
             ent.IsPreview = true;
             ent.SyncFlag = false;
