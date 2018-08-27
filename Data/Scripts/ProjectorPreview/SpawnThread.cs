@@ -56,8 +56,8 @@ namespace Digi.ProjectorPreview
             bp.OxygenAmount = null;
             bp.JumpDriveDirection = null;
             bp.JumpRemainingTime = null;
-            bp.ConveyorLines?.Clear(); // must not be null
-            bp.BlockGroups?.Clear(); // must not be null
+            bp.ConveyorLines?.Clear();
+            bp.BlockGroups?.Clear();
             bp.TargetingTargets = null;
             bp.TargetingWhitelist = false;
             bp.XMirroxPlane = null;
@@ -124,7 +124,7 @@ namespace Digi.ProjectorPreview
 
                 if(timer != null)
                 {
-                    ClearToolbar(timer.Toolbar); // must not be null
+                    ClearToolbar(timer.Toolbar);
                     timer.JustTriggered = false;
                     timer.Delay = 10000;
                     timer.IsCountingDown = false;
@@ -144,21 +144,21 @@ namespace Digi.ProjectorPreview
 
                 if(button != null)
                 {
-                    ClearToolbar(button.Toolbar); // must not be null
+                    ClearToolbar(button.Toolbar);
                 }
 
                 var shipController = block as MyObjectBuilder_ShipController;
 
                 if(shipController != null)
                 {
-                    ClearToolbar(shipController.Toolbar); // must not be null
+                    ClearToolbar(shipController.Toolbar);
                 }
 
                 var sensor = block as MyObjectBuilder_SensorBlock;
 
                 if(sensor != null)
                 {
-                    ClearToolbar(sensor.Toolbar); // must not be null
+                    ClearToolbar(sensor.Toolbar);
                 }
             }
         }
