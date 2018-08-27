@@ -9,7 +9,6 @@ using Sandbox.Game.Entities;
 using Sandbox.Game.EntityComponents;
 using Sandbox.Game.Lights;
 using Sandbox.ModAPI;
-using Sandbox.ModAPI.Interfaces;
 using SpaceEngineers.Game.ModAPI;
 using VRage;
 using VRage.Game;
@@ -1101,7 +1100,10 @@ namespace Digi.ProjectorPreview
 
                 try
                 {
-                    loadedSettings = MyAPIGateway.Utilities.SerializeFromXML<ProjectorPreviewModSettings>(rawData);
+                    if(rawData.IndexOf('<', 0, 5) != -1) // check for XML format, otherwise assume base64.
+                        loadedSettings = MyAPIGateway.Utilities.SerializeFromXML<ProjectorPreviewModSettings>(rawData);
+                    else
+                        loadedSettings = MyAPIGateway.Utilities.SerializeFromBinary<ProjectorPreviewModSettings>(Convert.FromBase64String(rawData));
                 }
                 catch(Exception e)
                 {
@@ -1117,7 +1119,7 @@ namespace Digi.ProjectorPreview
                 }
 
                 if(ProjectorPreviewMod.DEBUG)
-                    Log.Info($"  Loaded settings:\n{Settings.ToString()}");
+                    Log.Info($"  Loaded={loadedSomething}; settings:\n{Settings.ToString()}");
             }
 
             if(projector.Storage.TryGetValue(ProjectorPreviewMod.Instance.BLUEPRINT_GUID, out rawData))
@@ -1159,7 +1161,7 @@ namespace Digi.ProjectorPreview
             if(projector.Storage == null)
                 projector.Storage = new MyModStorageComponent();
 
-            projector.Storage[ProjectorPreviewMod.Instance.SETTINGS_GUID] = MyAPIGateway.Utilities.SerializeToXML(Settings);
+            projector.Storage[ProjectorPreviewMod.Instance.SETTINGS_GUID] = Convert.ToBase64String(MyAPIGateway.Utilities.SerializeToBinary(Settings));
 
             if(ProjectorPreviewMod.DEBUG)
                 Log.Info("SaveSettings()");
