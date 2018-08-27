@@ -18,15 +18,9 @@ using VRageMath;
 #pragma warning disable CS0162 // Unreachable code detected
 namespace Digi.ProjectorPreview
 {
-    [MySessionComponentDescriptor(MyUpdateOrder.BeforeSimulation)]
+    [MySessionComponentDescriptor(MyUpdateOrder.NoUpdate)]
     public class ProjectorPreviewMod : MySessionComponentBase
     {
-        public override void LoadData()
-        {
-            Instance = this;
-            Log.SetUp("Projector Preview", 517675282, "ProjectorPreview");
-        }
-
         public const bool DEBUG = false;
 
         public static ProjectorPreviewMod Instance = null;
@@ -73,12 +67,17 @@ namespace Digi.ProjectorPreview
             typeof(MyObjectBuilder_Wheel),
         };
 
-        private void Init()
+        public override void LoadData()
+        {
+            Instance = this;
+            Log.ModName = "Projector Preview";
+        }
+
+        public override void BeforeStart()
         {
             IsInitialized = true;
             IsPlayer = !(MyAPIGateway.Session.IsServer && MyAPIGateway.Utilities.IsDedicated);
 
-            Log.Init();
             UpdateConfigValues();
 
             if(IsPlayer)
@@ -86,9 +85,6 @@ namespace Digi.ProjectorPreview
 
             MyAPIGateway.Multiplayer.RegisterMessageHandler(PACKET_ID, PacketReceived);
             MyAPIGateway.TerminalControls.CustomControlGetter += CustomControlGetter;
-
-            // SetUpdateOrder() can't be called in update methods, needs to be done like this
-            MyAPIGateway.Utilities.InvokeOnGameThread(() => SetUpdateOrder(MyUpdateOrder.NoUpdate));
         }
 
         protected override void UnloadData()
@@ -105,26 +101,6 @@ namespace Digi.ProjectorPreview
 
                     MyAPIGateway.Multiplayer.UnregisterMessageHandler(PACKET_ID, PacketReceived);
                     MyAPIGateway.TerminalControls.CustomControlGetter -= CustomControlGetter;
-                }
-            }
-            catch(Exception e)
-            {
-                Log.Error(e);
-            }
-
-            Log.Close();
-        }
-
-        public override void UpdateBeforeSimulation()
-        {
-            try
-            {
-                if(!IsInitialized)
-                {
-                    if(MyAPIGateway.Session == null)
-                        return;
-
-                    Init();
                 }
             }
             catch(Exception e)
