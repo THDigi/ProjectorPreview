@@ -809,15 +809,10 @@ namespace Digi.ProjectorPreview
 
                     if(ProjectorPreviewMod.Debug)
                     {
-                        var text = $"{projector.CustomName} ({projector.CubeGrid.GridSizeEnum}) - VanillaBP={(projector.ProjectedGrid == null ? "(N/A)" : projector.ProjectedGrid.CustomName ?? "(Unnamed)")}; CustomBP={(spawnTaskRunning ? "(Spawning...)" : (OriginalBlueprint == null ? "(N/A)" : OriginalBlueprint.DisplayName ?? "(Unnamed)"))}";
-
-                        MyAPIGateway.Utilities.ShowNotification(text, 16, MyFontEnum.Blue);
-
-                        if(++skipDebug > 120)
+                        if(++skipDebug > 60 * 3)
                         {
                             skipDebug = 0;
-                            MyLog.Default.WriteLineAndConsole(text);
-                            Log.Info(text);
+                            Log.Info($"UpdateAfterSimulation() Status: {projector.CustomName} ({projector.CubeGrid.GridSizeEnum}) - VanillaBP={(projector.ProjectedGrid == null ? "(N/A)" : projector.ProjectedGrid.CustomName ?? "(Unnamed)")}; CustomBP={(spawnTaskRunning ? "(Spawning...)" : (OriginalBlueprint == null ? "(N/A)" : OriginalBlueprint.DisplayName ?? "(Unnamed)"))}");
                         }
                     }
                 }
