@@ -132,7 +132,7 @@
     <Compile Include="SerializationClasses.cs" />
     <Compile Include="ProjectorBlock.cs" />
     <Compile Include="SpawnThread.cs" />
-    <Compile Include="ProjectorPreview.cs" />
+    <Compile Include="ProjectorPreviewMod.cs" />
     <Compile Include="Log.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
