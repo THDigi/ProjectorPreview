@@ -21,11 +21,11 @@ namespace Digi.ProjectorPreview
     [MySessionComponentDescriptor(MyUpdateOrder.NoUpdate)]
     public class ProjectorPreviewMod : MySessionComponentBase
     {
-        public const bool DEBUG = false;
-
         public static ProjectorPreviewMod Instance = null;
         public static bool IsInProjectorTerminal => Instance.ViewingTerminalOf != null;
+        public static bool Debug => Instance.DebugEnabled;
 
+        public bool DebugEnabled = false;
         public bool IsInitialized = false;
         public bool IsPlayer = false;
         public float Transparency;
@@ -71,6 +71,11 @@ namespace Digi.ProjectorPreview
         {
             Instance = this;
             Log.ModName = "Projector Preview";
+
+            DebugEnabled = MyAPIGateway.Utilities.FileExistsInLocalStorage("debug", typeof(ProjectorPreviewMod));
+
+            if(Debug)
+                Log.Info("Debug logging enabled.");
         }
 
         public override void BeforeStart()
@@ -160,7 +165,7 @@ namespace Digi.ProjectorPreview
             {
                 if(bytes.Length <= 2)
                 {
-                    if(DEBUG)
+                    if(Debug)
                         Log.Error($"PacketReceived(); invalid length <= 2; length={bytes.Length}");
 
                     return;
@@ -170,7 +175,7 @@ namespace Digi.ProjectorPreview
 
                 if(data == null)
                 {
-                    if(DEBUG)
+                    if(Debug)
                         Log.Error($"PacketReceived(); no deserialized data!");
 
                     return;
@@ -180,7 +185,7 @@ namespace Digi.ProjectorPreview
 
                 if(!MyAPIGateway.Entities.TryGetEntityById(data.EntityId, out ent) || ent.Closed || !(ent is IMyProjector))
                 {
-                    if(DEBUG)
+                    if(Debug)
                         Log.Info($"PacketReceived(); {data.Type}; {(ent == null ? "can't find entity" : (ent.Closed ? "found closed entity" : "entity not projector"))}");
 
                     return;
@@ -190,7 +195,7 @@ namespace Digi.ProjectorPreview
 
                 if(logic == null)
                 {
-                    if(DEBUG)
+                    if(Debug)
                         Log.Error($"PacketReceived(); {data.Type}; projector doesn't have the gamelogic component!");
 
                     return;
@@ -202,13 +207,13 @@ namespace Digi.ProjectorPreview
                         {
                             if(data.Settings == null)
                             {
-                                if(DEBUG)
+                                if(Debug)
                                     Log.Error($"PacketReceived(); {data.Type}; settings are null!");
 
                                 return;
                             }
 
-                            if(DEBUG)
+                            if(Debug)
                                 Log.Info($"PacketReceived(); Settings; {(MyAPIGateway.Multiplayer.IsServer ? " Relaying to clients;" : "")}Valid!\n{logic.Settings}");
 
                             logic.UpdateSettings(data.Settings);
@@ -240,7 +245,7 @@ namespace Digi.ProjectorPreview
 
         public static void RelaySettingsToClients(IMyCubeBlock block, ProjectorPreviewModSettings settings)
         {
-            if(DEBUG)
+            if(Debug)
                 Log.Info("RelaySettingsToClients(block,settings)");
 
             var data = new PacketData(MyAPIGateway.Multiplayer.MyId, block.EntityId, settings);
@@ -250,7 +255,7 @@ namespace Digi.ProjectorPreview
 
         public static void RelayToClients(Vector3D syncPosition, byte[] bytes, ulong sender)
         {
-            if(DEBUG)
+            if(Debug)
                 Log.Info("RelayToClients(syncPos,bytes,sender)");
 
             var localSteamId = MyAPIGateway.Multiplayer.MyId;

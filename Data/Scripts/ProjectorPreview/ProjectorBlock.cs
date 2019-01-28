@@ -264,7 +264,7 @@ namespace Digi.ProjectorPreview
                 if(logic == null)
                     return;
 
-                if(ProjectorPreviewMod.DEBUG)
+                if(ProjectorPreviewMod.Debug)
                     Log.Info($"UI_UseThisShip_Action(); button pressed");
 
                 logic.UseThisShip_Sender(value == 2);
@@ -277,7 +277,7 @@ namespace Digi.ProjectorPreview
 
         private void UseThisShip_Sender(bool fix)
         {
-            if(ProjectorPreviewMod.DEBUG)
+            if(ProjectorPreviewMod.Debug)
                 Log.Info($"UseThisShip_Sender({fix})");
 
             useThisShipCooldown = COOLDOWN_USETHISSHIP;
@@ -296,7 +296,7 @@ namespace Digi.ProjectorPreview
 
         public void UseThisShip_Receiver(bool fix)
         {
-            if(ProjectorPreviewMod.DEBUG)
+            if(ProjectorPreviewMod.Debug)
                 Log.Info($"UseThisShip_Receiver({fix})");
 
             UseThisShip_Internal(fix);
@@ -346,7 +346,7 @@ namespace Digi.ProjectorPreview
         {
             try
             {
-                if(ProjectorPreviewMod.DEBUG)
+                if(ProjectorPreviewMod.Debug)
                     Log.Info($"UI_RemoveButton_Action(); button pressed");
 
                 GetLogic(block)?.RemoveBlueprints_Sender();
@@ -359,7 +359,7 @@ namespace Digi.ProjectorPreview
 
         private void RemoveBlueprints_Sender()
         {
-            if(ProjectorPreviewMod.DEBUG)
+            if(ProjectorPreviewMod.Debug)
                 Log.Info($"RemoveBlueprints_Sender()");
 
             var bytes = MyAPIGateway.Utilities.SerializeToBinary(new PacketData(MyAPIGateway.Multiplayer.MyId, projector.EntityId, PacketType.REMOVE));
@@ -374,7 +374,7 @@ namespace Digi.ProjectorPreview
 
         public void RemoveBlueprints_Receiver(byte[] bytes, ulong sender)
         {
-            if(ProjectorPreviewMod.DEBUG)
+            if(ProjectorPreviewMod.Debug)
                 Log.Info($"RemoveBlueprints_Receiver() :: {projector.CustomName} ({projector.CubeGrid.GridSizeEnum})");
 
             RemoveBlueprints_Internal();
@@ -797,7 +797,7 @@ namespace Digi.ProjectorPreview
 
                 if(MyAPIGateway.Multiplayer.IsServer && receiveTimeOut > 0 && --receiveTimeOut <= 0)
                 {
-                    if(ProjectorPreviewMod.DEBUG)
+                    if(ProjectorPreviewMod.Debug)
                         Log.Info($"Timeout expired, setting vanilla projected grid to null.");
 
                     SetVanillaProjectedGridNull();
@@ -807,7 +807,7 @@ namespace Digi.ProjectorPreview
                 {
                     UpdateProjection();
 
-                    if(ProjectorPreviewMod.DEBUG)
+                    if(ProjectorPreviewMod.Debug)
                     {
                         var text = $"{projector.CustomName} ({projector.CubeGrid.GridSizeEnum}) - VanillaBP={(projector.ProjectedGrid == null ? "(N/A)" : projector.ProjectedGrid.CustomName ?? "(Unnamed)")}; CustomBP={(spawnTaskRunning ? "(Spawning...)" : (OriginalBlueprint == null ? "(N/A)" : OriginalBlueprint.DisplayName ?? "(Unnamed)"))}";
 
@@ -835,7 +835,7 @@ namespace Digi.ProjectorPreview
                 #region Load from vanilla blueprint
                 if(projector.ProjectedGrid != null)
                 {
-                    if(ProjectorPreviewMod.DEBUG)
+                    if(ProjectorPreviewMod.Debug)
                         Log.Info($"UpdateProjection() :: vanilla projection detected");
 
                     if(blueprintSerializeTaskRunning)
@@ -843,7 +843,7 @@ namespace Digi.ProjectorPreview
 
                     if(lastCheckedProjectionId == projector.ProjectedGrid.EntityId)
                     {
-                        if(ProjectorPreviewMod.DEBUG)
+                        if(ProjectorPreviewMod.Debug)
                             Log.Info($"UpdateProjection() :: same projection, ignoring...");
 
                         return;
@@ -851,7 +851,7 @@ namespace Digi.ProjectorPreview
 
                     lastCheckedProjectionId = projector.ProjectedGrid.EntityId;
 
-                    if(ProjectorPreviewMod.DEBUG)
+                    if(ProjectorPreviewMod.Debug)
                         Log.Info($"UpdateProjection() :: set blueprint; name={projector.ProjectedGrid.CustomName}");
 
                     RemoveCustomProjection(removeLights: false, removeOriginalBP: true);
@@ -882,7 +882,7 @@ namespace Digi.ProjectorPreview
                             var worldViewRangeSq = MyAPIGateway.Session.SessionSettings.ViewDistance;
                             worldViewRangeSq *= worldViewRangeSq;
 
-                            if(ProjectorPreviewMod.DEBUG)
+                            if(ProjectorPreviewMod.Debug)
                                 Log.Info($"playersToReceive defined:");
 
                             var players = ProjectorPreviewMod.Instance.Players;
@@ -895,7 +895,7 @@ namespace Digi.ProjectorPreview
                                 {
                                     playersToReceive.Add(p.SteamUserId);
 
-                                    if(ProjectorPreviewMod.DEBUG)
+                                    if(ProjectorPreviewMod.Debug)
                                         Log.Info($" - {p.DisplayName} ({p.SteamUserId})");
                                 }
                             }
@@ -904,7 +904,7 @@ namespace Digi.ProjectorPreview
 
                             if(playersToReceive.Count == 0)
                             {
-                                if(ProjectorPreviewMod.DEBUG)
+                                if(ProjectorPreviewMod.Debug)
                                     Log.Info($"No players nearby, setting vanilla projected grid to null without waiting.");
 
                                 SetVanillaProjectedGridNull();
@@ -1027,7 +1027,7 @@ namespace Digi.ProjectorPreview
                 {
                     if(projector.ProjectedGrid == null)
                     {
-                        if(ProjectorPreviewMod.DEBUG)
+                        if(ProjectorPreviewMod.Debug)
                             Log.Info($"UpdateProjection() :: restored original blueprint to projector");
 
                         projector.SetProjectedGrid(OriginalBlueprint); // it's synchronized, no reason to do it clientside to spam server and clients with requests
@@ -1048,7 +1048,7 @@ namespace Digi.ProjectorPreview
                 return;
             }
 
-            if(ProjectorPreviewMod.DEBUG)
+            if(ProjectorPreviewMod.Debug)
             {
                 var p = GetPlayerFromSteamId(id);
                 Log.Info($"Received confirmation from {p.DisplayName} ({p.SteamUserId}); remaining={playersToReceive.Count}");
@@ -1058,7 +1058,7 @@ namespace Digi.ProjectorPreview
 
             if(playersToReceive.Count == 0)
             {
-                if(ProjectorPreviewMod.DEBUG)
+                if(ProjectorPreviewMod.Debug)
                     Log.Info($"Confirmed from all players, setting vanilla projected grid to null.");
 
                 SetVanillaProjectedGridNull();
@@ -1085,7 +1085,7 @@ namespace Digi.ProjectorPreview
 
         private bool LoadSettingsAndBlueprint()
         {
-            if(ProjectorPreviewMod.DEBUG)
+            if(ProjectorPreviewMod.Debug)
                 Log.Info("LoadSettingsAndBlueprint()");
 
             if(projector.Storage == null)
@@ -1118,7 +1118,7 @@ namespace Digi.ProjectorPreview
                     loadedSomething = true;
                 }
 
-                if(ProjectorPreviewMod.DEBUG)
+                if(ProjectorPreviewMod.Debug)
                     Log.Info($"  Loaded={loadedSomething}; settings:\n{Settings.ToString()}");
             }
 
@@ -1152,7 +1152,7 @@ namespace Digi.ProjectorPreview
 
             OriginalBlueprint = data.Blueprint;
 
-            if(ProjectorPreviewMod.DEBUG)
+            if(ProjectorPreviewMod.Debug)
                 Log.Info("BlueprintLoadCompleted()");
         }
 
@@ -1163,7 +1163,7 @@ namespace Digi.ProjectorPreview
 
             projector.Storage[ProjectorPreviewMod.Instance.SETTINGS_GUID] = Convert.ToBase64String(MyAPIGateway.Utilities.SerializeToBinary(Settings));
 
-            if(ProjectorPreviewMod.DEBUG)
+            if(ProjectorPreviewMod.Debug)
                 Log.Info("SaveSettings()");
         }
 
@@ -1182,7 +1182,7 @@ namespace Digi.ProjectorPreview
 
                 projector.Storage[ProjectorPreviewMod.Instance.BLUEPRINT_GUID] = data.SerializedBlueprint;
 
-                if(ProjectorPreviewMod.DEBUG)
+                if(ProjectorPreviewMod.Debug)
                     Log.Info($"BlueprintProcessCompleted() :: name={data.Blueprint.DisplayName}");
             }
             catch(Exception e)
@@ -1263,7 +1263,7 @@ namespace Digi.ProjectorPreview
 
                 if(CustomProjection != null)
                 {
-                    if(ProjectorPreviewMod.DEBUG)
+                    if(ProjectorPreviewMod.Debug)
                         Log.Info($"RemoveCustomProjection() :: name={CustomProjection.DisplayName}; id={CustomProjection.EntityId}");
 
                     CustomProjection.Close();
@@ -1326,7 +1326,7 @@ namespace Digi.ProjectorPreview
                 {
                     if(!spawnTaskRunning && OriginalBlueprint != null)
                     {
-                        if(ProjectorPreviewMod.DEBUG)
+                        if(ProjectorPreviewMod.Debug)
                             Log.Info("UpdateProjectionVisibility() :: Started spawn task...");
 
                         spawnTaskRunning = true;
@@ -1452,7 +1452,7 @@ namespace Digi.ProjectorPreview
                 MyAPIGateway.Entities.AddEntity(CustomProjection);
                 needsMatrixUpdate = true;
 
-                if(ProjectorPreviewMod.DEBUG)
+                if(ProjectorPreviewMod.Debug)
                     Log.Info($"CustomProjection created; name={CustomProjection.DisplayName} id={CustomProjection.EntityId}");
 
                 SetLargestGridLength(CustomProjection);
@@ -1467,7 +1467,7 @@ namespace Digi.ProjectorPreview
                         lights[i] = CreateLight(i == 0);
                 }
 
-                if(ProjectorPreviewMod.DEBUG)
+                if(ProjectorPreviewMod.Debug)
                     Log.Info($"SpawnCompleted() :: name={CustomProjection.DisplayName}");
             }
             catch(Exception e)
