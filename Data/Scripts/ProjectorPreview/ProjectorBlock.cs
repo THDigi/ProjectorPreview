@@ -1742,7 +1742,13 @@ namespace Digi.ProjectorPreview
             else
             {
                 if(color.HasValue && !color.Value.Equals(slim.GetColorMask(), EPSILON))
+                {
+#if(VERSION_190 || VERSION_189 || VERSION_188 || VERSION_187 || VERSION_186 || VERSION_185) // HACK backwards compatibility because it's easy in this case
                     CustomProjection.ChangeColor(CustomProjection.GetCubeBlock(slim.Max), color.Value);
+#else
+                    CustomProjection.ChangeColorAndSkin(CustomProjection.GetCubeBlock(slim.Max), color.Value);
+#endif
+                }
 
                 var transparency = (Settings.SeeThrough ? (highlight ? mod.TransparencyDecorHighlight : mod.TransparencyDecor) : (highlight ? mod.TransparencyHighlight : mod.Transparency));
 
