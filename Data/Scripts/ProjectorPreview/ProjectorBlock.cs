@@ -311,6 +311,9 @@ namespace Digi.ProjectorPreview
             if(projector.ProjectedGrid != null)
                 projector.SetProjectedGrid(null);
 
+            if(projector.Storage != null)
+                projector.Storage.Remove(ProjectorPreviewMod.Instance.BLUEPRINT_GUID);
+
             var bp = (MyObjectBuilder_CubeGrid)projector.CubeGrid.GetObjectBuilder();
 
             if(fix)
