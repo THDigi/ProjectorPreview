@@ -277,6 +277,9 @@ namespace Digi.ProjectorPreview
 
         private void UseThisShip_Sender(bool fix)
         {
+            if(useThisShipCooldown > 0)
+                return;
+
             if(ProjectorPreviewMod.Debug)
                 Log.Info($"UseThisShip_Sender({fix})");
 
