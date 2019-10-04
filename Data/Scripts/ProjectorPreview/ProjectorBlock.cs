@@ -20,7 +20,6 @@ using VRage.ObjectBuilders;
 using VRage.Utils;
 using VRageMath;
 
-#pragma warning disable CS0162 // Unreachable code detected
 namespace Digi.ProjectorPreview
 {
     [MyEntityComponentDescriptor(typeof(MyObjectBuilder_Projector), useEntityUpdate: false)]

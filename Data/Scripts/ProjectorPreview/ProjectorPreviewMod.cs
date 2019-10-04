@@ -12,10 +12,12 @@ using VRage.ObjectBuilders;
 using VRage.Utils;
 using VRageMath;
 
+// DEBUG TODO: if IgnoreSize=false, set IgnoreSize=true clientside when opening blueprints menu
+// then if they select a different size grid, force preview mode only.
+
 // TODO block place/remove sync between real grid and projected grid
 // ^^^ needs sync of block stages, paint, and many other things...
 
-#pragma warning disable CS0162 // Unreachable code detected
 namespace Digi.ProjectorPreview
 {
     [MySessionComponentDescriptor(MyUpdateOrder.NoUpdate)]
