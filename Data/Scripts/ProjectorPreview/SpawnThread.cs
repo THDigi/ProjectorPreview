@@ -1,4 +1,5 @@
-﻿using ParallelTasks;
+﻿using System;
+using ParallelTasks;
 using Sandbox.Common.ObjectBuilders;
 using Sandbox.Game.Entities;
 using Sandbox.ModAPI;
@@ -22,7 +23,8 @@ namespace Digi.ProjectorPreview
             }
         }
 
-        public static void Run(WorkData workData)
+        public static Action<WorkData> Run = new Action<WorkData>(RunMethod);
+        private static void RunMethod(WorkData workData)
         {
             var data = (Data)workData;
 

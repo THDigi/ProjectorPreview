@@ -93,13 +93,6 @@ namespace Digi.ProjectorPreview
         public const float MIN_LIGHTINTENSITY = 0f; // Light intensity slider
         public const float MAX_LIGHTINTENSITY = 5f;
 
-        private readonly Vector3 STATUS_COLOR_NORMAL = new Color(0, 0, 0).ColorToHSVDX11();
-        private readonly Vector3 STATUS_COLOR_BETTER = new Color(0, 255, 0).ColorToHSVDX11();
-        private readonly Vector3 STATUS_COLOR_MISSING = new Color(255, 0, 0).ColorToHSVDX11();
-        private readonly Vector3 STATUS_COLOR_WRONG_TYPE = new Color(255, 0, 255).ColorToHSVDX11();
-        private readonly Vector3 STATUS_COLOR_WRONG_COLOR = new Color(55, 0, 155).ColorToHSVDX11();
-        private readonly Vector3 STATUS_COLOR_WRONG_ROTATION = new Color(0, 155, 255).ColorToHSVDX11();
-
         private const float LIGHT_DETAIL_RADIUS_START = 1f;
         private const float LIGHT_DETAIL_RADIUS_MUL = 1f;
         private const float LIGHT_DETAIL_FALLOFF = 1f;
@@ -280,7 +273,7 @@ namespace Digi.ProjectorPreview
                 return;
 
             if(ProjectorPreviewMod.Debug)
-                Log.Info($"UseThisShip_Sender({fix})");
+                Log.Info($"UseThisShip_Sender({fix.ToString()})");
 
             useThisShipCooldown = COOLDOWN_USETHISSHIP;
 
@@ -299,7 +292,7 @@ namespace Digi.ProjectorPreview
         public void UseThisShip_Receiver(bool fix)
         {
             if(ProjectorPreviewMod.Debug)
-                Log.Info($"UseThisShip_Receiver({fix})");
+                Log.Info($"UseThisShip_Receiver({fix.ToString()})");
 
             UseThisShip_Internal(fix);
         }
@@ -380,7 +373,7 @@ namespace Digi.ProjectorPreview
         public void RemoveBlueprints_Receiver(byte[] bytes, ulong sender)
         {
             if(ProjectorPreviewMod.Debug)
-                Log.Info($"RemoveBlueprints_Receiver() :: {projector.CustomName} ({projector.CubeGrid.GridSizeEnum})");
+                Log.Info($"RemoveBlueprints_Receiver() :: {projector.CustomName} ({projector.CubeGrid.GridSizeEnum.ToString()})");
 
             RemoveBlueprints_Internal();
 
@@ -461,9 +454,14 @@ namespace Digi.ProjectorPreview
                 return;
 
             if(logic.CustomProjection != null)
-                writer.AppendFormat("{0:0.00}m (1:{1:0.000})", logic.Scale, logic.LargestGridLength / logic.Scale);
+            {
+                var ratio = logic.LargestGridLength / logic.Scale;
+                writer.Append(logic.Scale.ToString("0.00")).Append("m (1:").Append(ratio.ToString("0.000"));
+            }
             else
-                writer.AppendFormat("{0:0.00}m", logic.Scale);
+            {
+                writer.Append(logic.Scale.ToString("0.00")).Append('m');
+            }
         }
         #endregion
 
@@ -531,7 +529,7 @@ namespace Digi.ProjectorPreview
 
                 if(logic != null)
                 {
-                    writer.AppendFormat("{0:0.00}m", logic.Offset.GetDim(axis));
+                    writer.Append(logic.Offset.GetDim(axis).ToString("0.00")).Append('m');
                 }
             }
             catch(Exception e)
@@ -577,9 +575,9 @@ namespace Digi.ProjectorPreview
                 else
                 {
                     if(logic.Spin.IsAxisSet(axis))
-                        writer.AppendFormat("Spinning {0:0.00}°/s", deg);
+                        writer.Append("Spinning ").Append(deg.ToString("0.00")).Append("°/s");
                     else
-                        writer.AppendFormat("Fixed at {0:0.00}°", deg);
+                        writer.Append("Fixed at ").Append(deg.ToString("0.00")).Append("°");
                 }
             }
             catch(Exception e)
@@ -641,7 +639,7 @@ namespace Digi.ProjectorPreview
                 }
                 else
                 {
-                    writer.AppendFormat("{0:0.00}", logic.LightIntensity);
+                    writer.Append(logic.LightIntensity.ToString("0.00"));
                 }
             }
             catch(Exception e)
@@ -715,7 +713,7 @@ namespace Digi.ProjectorPreview
                     ReadLegacyStorage();
             }
 
-            ProjectorPreviewMod.Instance.SetupTerminalControls<IMyProjector>();
+            ProjectorPreviewMod.Instance.SetupTerminalControls();
         }
 
         public override void Close()
@@ -817,7 +815,7 @@ namespace Digi.ProjectorPreview
                         if(++skipDebug > 60 * 3)
                         {
                             skipDebug = 0;
-                            Log.Info($"UpdateAfterSimulation() Status: {projector.CustomName} ({projector.CubeGrid.GridSizeEnum}) - VanillaBP={(projector.ProjectedGrid == null ? "(N/A)" : projector.ProjectedGrid.CustomName ?? "(Unnamed)")}; CustomBP={(spawnTaskRunning ? "(Spawning...)" : (OriginalBlueprint == null ? "(N/A)" : OriginalBlueprint.DisplayName ?? "(Unnamed)"))}");
+                            Log.Info($"UpdateAfterSimulation() Status: {projector.CustomName} ({projector.CubeGrid.GridSizeEnum.ToString()}) - VanillaBP={(projector.ProjectedGrid == null ? "(N/A)" : projector.ProjectedGrid.CustomName ?? "(Unnamed)")}; CustomBP={(spawnTaskRunning ? "(Spawning...)" : (OriginalBlueprint == null ? "(N/A)" : OriginalBlueprint.DisplayName ?? "(Unnamed)"))}");
                         }
                     }
                 }
@@ -896,7 +894,7 @@ namespace Digi.ProjectorPreview
                                     playersToReceive.Add(p.SteamUserId);
 
                                     if(ProjectorPreviewMod.Debug)
-                                        Log.Info($" - {p.DisplayName} ({p.SteamUserId})");
+                                        Log.Info($" - {p.DisplayName} ({p.SteamUserId.ToString()})");
                                 }
                             }
 
@@ -1050,8 +1048,8 @@ namespace Digi.ProjectorPreview
 
             if(ProjectorPreviewMod.Debug)
             {
-                var p = GetPlayerFromSteamId(id);
-                Log.Info($"Received confirmation from {p.DisplayName} ({p.SteamUserId}); remaining={playersToReceive.Count}");
+                var p = ProjectorPreviewMod.GetPlayerFromSteamId(id);
+                Log.Info($"Received confirmation from {p.DisplayName} ({p.SteamUserId.ToString()}); remaining={playersToReceive.Count.ToString()}");
             }
 
             playersToReceive.Remove(id);
@@ -1091,9 +1089,9 @@ namespace Digi.ProjectorPreview
             if(projector.Storage == null)
                 return false;
 
-            string rawData;
             bool loadedSomething = false;
 
+            string rawData;
             if(projector.Storage.TryGetValue(ProjectorPreviewMod.Instance.SETTINGS_GUID, out rawData))
             {
                 ProjectorPreviewModSettings loadedSettings = null;
@@ -1119,7 +1117,7 @@ namespace Digi.ProjectorPreview
                 }
 
                 if(ProjectorPreviewMod.Debug)
-                    Log.Info($"  Loaded={loadedSomething}; settings:\n{Settings.ToString()}");
+                    Log.Info($"  Loaded={loadedSomething.ToString()}; settings:\n{Settings.ToString()}");
             }
 
             if(projector.Storage.TryGetValue(ProjectorPreviewMod.Instance.BLUEPRINT_GUID, out rawData))
@@ -1133,8 +1131,10 @@ namespace Digi.ProjectorPreview
                 else
                 {
                     OriginalBlueprint = null;
+
                     blueprintLoadTaskRunning = true;
                     blueprintLoadTask = MyAPIGateway.Parallel.Start(BlueprintThread.Run, BlueprintLoadCompleted, new BlueprintThread.Data(rawData));
+
                     loadedSomething = true;
                 }
             }
@@ -1264,7 +1264,7 @@ namespace Digi.ProjectorPreview
                 if(CustomProjection != null)
                 {
                     if(ProjectorPreviewMod.Debug)
-                        Log.Info($"RemoveCustomProjection() :: name={CustomProjection.DisplayName}; id={CustomProjection.EntityId}");
+                        Log.Info($"RemoveCustomProjection() :: name={CustomProjection.DisplayName}; id={CustomProjection.EntityId.ToString()}");
 
                     CustomProjection.Close();
                     CustomProjection = null;
@@ -1453,7 +1453,7 @@ namespace Digi.ProjectorPreview
                 needsMatrixUpdate = true;
 
                 if(ProjectorPreviewMod.Debug)
-                    Log.Info($"CustomProjection created; name={CustomProjection.DisplayName} id={CustomProjection.EntityId}");
+                    Log.Info($"CustomProjection created; name={CustomProjection.DisplayName} id={CustomProjection.EntityId.ToString()}");
 
                 SetLargestGridLength(CustomProjection);
 
@@ -1519,57 +1519,67 @@ namespace Digi.ProjectorPreview
 
             if(resetColors && !Settings.Status)
             {
-                if(originalColors != null && originalColors.Count > 0)
-                {
-                    var blocksCount = CustomProjection.BlocksCount;
-                    var max = Math.Min(blockIndex + BLOCKS_PER_UPDATE, blocksCount);
-                    int i = 0;
-
-                    foreach(var tuple in originalColors.Values)
-                    {
-                        if(++i <= blockIndex)
-                            continue;
-
-                        SetTransparencyAndColor(tuple.Item1, tuple.Item2);
-
-                        if(++blockIndex >= max)
-                            break;
-                    }
-
-                    if(blockIndex >= blocksCount)
-                        resetColors = false;
-                }
+                ResetColorsForStatus();
             }
             else
             {
+                ColorStatusMode();
+            }
+        }
+
+        private void ResetColorsForStatus()
+        {
+            if(originalColors != null && originalColors.Count > 0)
+            {
                 var blocksCount = CustomProjection.BlocksCount;
-
-                if(blockIndex >= blocksCount)
-                    ResetBlockStatus();
-
                 var max = Math.Min(blockIndex + BLOCKS_PER_UPDATE, blocksCount);
                 int i = 0;
 
-                foreach(IMySlimBlock projectedSlim in CustomProjection.GetBlocks())
+                foreach(var tuple in originalColors.Values)
                 {
                     if(++i <= blockIndex)
                         continue;
 
-                    if(Settings.Status)
-                    {
-                        bool highlight;
-                        bool blink;
-                        var color = GetBlockStatusColor(projectedSlim, out highlight, out blink);
-                        SetTransparencyAndColor(projectedSlim, color, highlight, blink);
-                    }
-                    else
-                    {
-                        SetTransparencyAndColor(projectedSlim);
-                    }
+                    SetTransparencyAndColor(tuple.Item1, tuple.Item2);
 
                     if(++blockIndex >= max)
                         break;
                 }
+
+                if(blockIndex >= blocksCount)
+                    resetColors = false;
+            }
+        }
+
+        private void ColorStatusMode()
+        {
+            var blocksCount = CustomProjection.BlocksCount;
+
+            if(blockIndex >= blocksCount)
+                ResetBlockStatus();
+
+            var max = Math.Min(blockIndex + BLOCKS_PER_UPDATE, blocksCount);
+            int i = 0;
+
+            foreach(IMySlimBlock projectedSlim in CustomProjection.GetBlocks())
+            {
+                if(++i <= blockIndex)
+                    continue;
+
+                if(Settings.Status)
+                {
+                    bool highlight;
+                    bool blink;
+                    var color = GetBlockStatusColor(projectedSlim, out highlight, out blink);
+                    SetTransparencyAndColor(projectedSlim, color, highlight, blink);
+                }
+                else
+                {
+                    SetTransparencyAndColor(projectedSlim);
+                }
+
+                if(++blockIndex >= max)
+                    break;
             }
         }
 
@@ -1610,7 +1620,7 @@ namespace Digi.ProjectorPreview
                                 else
                                 {
                                     blocksWrongType++;
-                                    return STATUS_COLOR_WRONG_TYPE;
+                                    return ProjectorPreviewMod.Instance.STATUS_COLOR_WRONG_TYPE;
                                 }
                             }
 
@@ -1624,13 +1634,13 @@ namespace Digi.ProjectorPreview
             {
                 blink = true;
                 blocksMissing++;
-                return STATUS_COLOR_MISSING;
+                return ProjectorPreviewMod.Instance.STATUS_COLOR_MISSING;
             }
 
             if(realSlim.BlockDefinition.Id != projectedSlim.BlockDefinition.Id)
             {
                 blocksWrongType++;
-                return STATUS_COLOR_WRONG_TYPE;
+                return ProjectorPreviewMod.Instance.STATUS_COLOR_WRONG_TYPE;
             }
 
             if(!wrongRotation)
@@ -1646,7 +1656,7 @@ namespace Digi.ProjectorPreview
             if(realIntegrity > projectedIntegrity)
             {
                 blocksBetterIntegrity++;
-                return STATUS_COLOR_BETTER;
+                return ProjectorPreviewMod.Instance.STATUS_COLOR_BETTER;
             }
 
             if(realIntegrity < projectedIntegrity)
@@ -1664,7 +1674,7 @@ namespace Digi.ProjectorPreview
                     if(wrongRotation)
                     {
                         blocksWrongRotation++;
-                        return STATUS_COLOR_WRONG_ROTATION;
+                        return ProjectorPreviewMod.Instance.STATUS_COLOR_WRONG_ROTATION;
                     }
                 }
                 else
@@ -1695,7 +1705,7 @@ namespace Digi.ProjectorPreview
             if(wrongRotation)
             {
                 blocksWrongRotation++;
-                return STATUS_COLOR_WRONG_ROTATION;
+                return ProjectorPreviewMod.Instance.STATUS_COLOR_WRONG_ROTATION;
             }
 
             if(originalColors != null)
@@ -1705,12 +1715,12 @@ namespace Digi.ProjectorPreview
                 if(originalColors.TryGetValue(projectedSlimMax, out originalColor) && Vector3.DistanceSquared(realSlim.ColorMaskHSV, originalColor.Item2) >= 0.0001f)
                 {
                     blocksWrongColor++;
-                    return STATUS_COLOR_WRONG_COLOR;
+                    return ProjectorPreviewMod.Instance.STATUS_COLOR_WRONG_COLOR;
                 }
             }
 
             highlight = false;
-            return STATUS_COLOR_NORMAL;
+            return ProjectorPreviewMod.Instance.STATUS_COLOR_NORMAL;
         }
 
         private void SetTransparencyAndColor(IMySlimBlock slim, Vector3? color = null, bool highlight = false, bool blink = false)
@@ -1852,25 +1862,5 @@ namespace Digi.ProjectorPreview
             projector.CustomName = Regex.Replace(projector.CustomName, @"\s+\{ProjectorPreview:(.+)\}\s+", " ").Trim();
         }
         #endregion
-
-        private static IMyPlayer GetPlayerFromSteamId(ulong steamId)
-        {
-            var players = ProjectorPreviewMod.Instance.Players;
-            players.Clear();
-            MyAPIGateway.Players.GetPlayers(players);
-            IMyPlayer player = null;
-
-            foreach(var p in players)
-            {
-                if(p.SteamUserId == steamId)
-                {
-                    player = p;
-                    break;
-                }
-            }
-
-            players.Clear();
-            return player;
-        }
     }
 }
