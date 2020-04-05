@@ -17,8 +17,8 @@ using VRage.Game.Entity;
 using VRage.Game.ModAPI;
 using VRage.ModAPI;
 using VRage.ObjectBuilders;
-using VRage.Utils;
 using VRageMath;
+using BlendTypeEnum = VRageRender.MyBillboard.BlendTypeEnum;
 
 namespace Digi.ProjectorPreview
 {
@@ -960,7 +960,7 @@ namespace Digi.ProjectorPreview
                             currentRotationRad.SetDim(i, rad);
                         }
 
-                        matrix.Translation = Vector3D.Zero; // needed to avoid weird rotation
+                        matrix.Translation = Vector3D.Zero;
 
                         if(Math.Abs(currentRotationRad.X) > 0.001f)
                             matrix *= MatrixD.CreateFromAxisAngle(matrix.Right, currentRotationRad.X);
@@ -973,9 +973,8 @@ namespace Digi.ProjectorPreview
 
                         MatrixD.Rescale(ref matrix, ProjectionScale);
 
-                        matrix.Translation = Vector3D.Zero; // needed to avoid weirdness with the transformation
                         var centerLocal = (CustomProjection.Max + CustomProjection.Min) * CustomProjection.GridSizeHalf;
-                        matrix.Translation = (projector.WorldMatrix.Translation + relativeOffset) - Vector3D.Transform(centerLocal, matrix);
+                        matrix.Translation = (projector.WorldMatrix.Translation + relativeOffset) - Vector3D.TransformNormal(centerLocal, matrix);
 
                         CustomProjection.WorldMatrix = matrix;
                         CustomProjection.PositionComp.Scale = ProjectionScale;
@@ -1017,6 +1016,37 @@ namespace Digi.ProjectorPreview
                             }
                         }
                     }
+                }
+                #endregion
+
+                #region Draw Axes while in terminal
+                if(projectionVisible
+                && CustomProjection != null
+                && ProjectorPreviewMod.Instance.IsPlayer
+                && ProjectorPreviewMod.Instance.ViewingTerminalOf == projector
+                && MyAPIGateway.Gui.GetCurrentScreen == MyTerminalPageEnum.ControlPanel)
+                {
+                    var material = ProjectorPreviewMod.Instance.MATERIAL_SQUARE;
+                    var wm = projector.WorldMatrix;
+                    var worldVolume = CustomProjection.PositionComp.WorldVolume;
+                    var center = worldVolume.Center;
+                    var length = (float)worldVolume.Radius * ProjectionScale;
+                    float thick = MathHelper.Clamp(Scale * 0.025f, 0.005f, 0.05f);
+                    const BlendTypeEnum BLEND_TYPE = BlendTypeEnum.SDR;
+
+                    wm.Translation = Vector3D.Zero;
+
+                    if(Math.Abs(currentRotationRad.X) > 0.001f)
+                        wm *= MatrixD.CreateFromAxisAngle(wm.Right, currentRotationRad.X);
+                    MyTransparentGeometry.AddLineBillboard(material, Color.Red, center, wm.Right, length, thick, BLEND_TYPE);
+
+                    if(Math.Abs(currentRotationRad.Y) > 0.001f)
+                        wm *= MatrixD.CreateFromAxisAngle(wm.Up, currentRotationRad.Y);
+                    MyTransparentGeometry.AddLineBillboard(material, Color.Lime, center, wm.Up, length, thick, BLEND_TYPE);
+
+                    if(Math.Abs(currentRotationRad.Z) > 0.001f)
+                        wm *= MatrixD.CreateFromAxisAngle(wm.Backward, currentRotationRad.Z);
+                    MyTransparentGeometry.AddLineBillboard(material, Color.Blue, center, wm.Backward, length, thick, BLEND_TYPE);
                 }
                 #endregion
             }
