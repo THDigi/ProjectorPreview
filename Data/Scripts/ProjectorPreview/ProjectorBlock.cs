@@ -1073,9 +1073,7 @@ namespace Digi.ProjectorPreview
         {
             if(playersToReceive == null)
             {
-                var e = "PlayerReceivedBP() :: playersToReceive == null !!!!";
-                Log.Error(e, e);
-                return;
+                playersToReceive = new HashSet<ulong>();
             }
 
             if(ProjectorPreviewMod.Debug)
