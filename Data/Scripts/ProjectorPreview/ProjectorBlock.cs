@@ -1231,13 +1231,17 @@ namespace Digi.ProjectorPreview
         {
             try
             {
-                if(projector.Storage != null)
+                if(projector?.Storage != null && ProjectorPreviewMod.Instance != null)
                 {
                     // serialize settings
-                    projector.Storage[ProjectorPreviewMod.Instance.SETTINGS_GUID] = Convert.ToBase64String(MyAPIGateway.Utilities.SerializeToBinary(Settings));
+                    projector.Storage.SetValue(ProjectorPreviewMod.Instance.SETTINGS_GUID, Convert.ToBase64String(MyAPIGateway.Utilities.SerializeToBinary(Settings)));
 
                     // only save blueprint to mod component if in preview mode, otherwise the game saves it.
-                    projector.Storage[ProjectorPreviewMod.Instance.BLUEPRINT_GUID] = (PreviewMode ? SerializedBlueprint : null);
+                    // WARNING: do not set value to NULL or serializer will break silently and clients can't stream anymore.
+                    if(PreviewMode && !string.IsNullOrEmpty(SerializedBlueprint))
+                        projector.Storage.SetValue(ProjectorPreviewMod.Instance.BLUEPRINT_GUID, SerializedBlueprint);
+                    else
+                        projector.Storage.RemoveValue(ProjectorPreviewMod.Instance.BLUEPRINT_GUID);
                 }
             }
             catch(Exception e)
