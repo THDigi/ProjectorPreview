@@ -839,7 +839,9 @@ namespace Digi.ProjectorPreview
                 if(icon != null)
                     a.Icon = icon;
                 a.ValidForGroups = true;
-                a.Action = (b) => c.Setter(b, item.Key);
+
+                long key = item.Key;
+                a.Action = (b) => c.Setter(b, key);
                 //if(writer != null)
                 //    a.Writer = writer;
 
