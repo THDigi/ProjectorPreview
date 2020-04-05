@@ -27,6 +27,7 @@ namespace Digi.ProjectorPreview
     {
         public ProjectorPreviewModSettings Settings = new ProjectorPreviewModSettings();
         public MyObjectBuilder_CubeGrid OriginalBlueprint = null;
+        public string SerializedBlueprint = null;
         public MyCubeGrid CustomProjection = null;
         public float LargestGridLength = 2.5f;
         public float ProjectionScale = 1f; // cached projection scale calculated from the slider value and LargestGridLength
@@ -921,6 +922,7 @@ namespace Digi.ProjectorPreview
                     }
 
                     // serialize the blueprint in another thread and store it in the block.
+                    SerializedBlueprint = null;
                     blueprintSerializeTaskRunning = true;
                     blueprintSerializeTask = MyAPIGateway.Parallel.Start(BlueprintThread.Run, BlueprintSerializeCompleted, new BlueprintThread.Data(OriginalBlueprint));
                     return;
@@ -1087,7 +1089,13 @@ namespace Digi.ProjectorPreview
                 Log.Info("LoadSettingsAndBlueprint()");
 
             if(projector.Storage == null)
+            {
+                // needed for usage with IsSerialized() in case the MyModStorageComponent.IsSerialized() executes after this gamelogic.IsSerialized()
+                // which can be make it not serialize after I serialize stuff in IsSerialized().
+                projector.Storage = new MyModStorageComponent();
+
                 return false;
+            }
 
             bool loadedSomething = false;
 
@@ -1131,6 +1139,7 @@ namespace Digi.ProjectorPreview
                 else
                 {
                     OriginalBlueprint = null;
+                    SerializedBlueprint = rawData;
 
                     blueprintLoadTaskRunning = true;
                     blueprintLoadTask = MyAPIGateway.Parallel.Start(BlueprintThread.Run, BlueprintLoadCompleted, new BlueprintThread.Data(rawData));
@@ -1177,10 +1186,7 @@ namespace Digi.ProjectorPreview
                 if(Log.TaskHasErrors(blueprintSerializeTask, "BlueprintProcessTask") || projector.Closed)
                     return;
 
-                if(projector.Storage == null)
-                    projector.Storage = new MyModStorageComponent();
-
-                projector.Storage[ProjectorPreviewMod.Instance.BLUEPRINT_GUID] = data.SerializedBlueprint;
+                SerializedBlueprint = data.SerializedBlueprint;
 
                 if(ProjectorPreviewMod.Debug)
                     Log.Info($"BlueprintProcessCompleted() :: name={data.Blueprint.DisplayName}");
@@ -1189,6 +1195,27 @@ namespace Digi.ProjectorPreview
             {
                 Log.Error(e);
             }
+        }
+
+        public override bool IsSerialized()
+        {
+            try
+            {
+                if(projector.Storage != null)
+                {
+                    // serialize settings
+                    projector.Storage[ProjectorPreviewMod.Instance.SETTINGS_GUID] = Convert.ToBase64String(MyAPIGateway.Utilities.SerializeToBinary(Settings));
+
+                    // only save blueprint to mod component if in preview mode, otherwise the game saves it.
+                    projector.Storage[ProjectorPreviewMod.Instance.BLUEPRINT_GUID] = (PreviewMode ? SerializedBlueprint : null);
+                }
+            }
+            catch(Exception e)
+            {
+                Log.Error(e);
+            }
+
+            return base.IsSerialized();
         }
 
         #region Only for players
