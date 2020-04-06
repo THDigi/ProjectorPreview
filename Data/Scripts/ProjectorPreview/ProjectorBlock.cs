@@ -683,12 +683,11 @@ namespace Digi.ProjectorPreview
             // Block spawned, called async.
             // NOTE: For safety, do not do anything more than setting NeedsUpdate in this method.
             NeedsUpdate = MyEntityUpdateEnum.EACH_FRAME;
+            projector = (IMyProjector)Entity;
         }
 
         private void Initialize()
         {
-            projector = (IMyProjector)Entity;
-
             if(projector.CubeGrid.Physics == null)
             {
                 NeedsUpdate = MyEntityUpdateEnum.NONE;
@@ -1229,8 +1228,20 @@ namespace Digi.ProjectorPreview
         {
             try
             {
-                if(projector?.Storage != null && ProjectorPreviewMod.Instance != null)
+                if(projector == null)
+                    throw new Exception("projector = null");
+
+                if(projector.Storage != null)
                 {
+                    if(ProjectorPreviewMod.Instance == null)
+                        throw new Exception("ProjectorPreviewMod.Instance = null");
+
+                    if(MyAPIGateway.Utilities == null)
+                        throw new Exception("MyAPIGateway.Utilities = null");
+
+                    if(Settings == null)
+                        throw new Exception("Settings = null");
+
                     // serialize settings
                     projector.Storage.SetValue(ProjectorPreviewMod.Instance.SETTINGS_GUID, Convert.ToBase64String(MyAPIGateway.Utilities.SerializeToBinary(Settings)));
 
