@@ -43,8 +43,7 @@ namespace Digi.ProjectorPreview
         private Vector3D relativeOffset = Vector3D.Zero;
         private bool needsMatrixUpdate = false;
         private bool needsConstantMatrixUpdate = false;
-        private Vector3[] corners = null;
-        private MyLight[] lights = null;
+        private MyLight light = null;
         private int skipDebug = 0;
 
         // used by status mode
@@ -94,22 +93,11 @@ namespace Digi.ProjectorPreview
         public const float MIN_LIGHTINTENSITY = 0f; // Light intensity slider
         public const float MAX_LIGHTINTENSITY = 5f;
 
-        private const float LIGHT_DETAIL_RADIUS_START = 1f;
-        private const float LIGHT_DETAIL_RADIUS_MUL = 1f;
-        private const float LIGHT_DETAIL_FALLOFF = 1f;
-        private const float LIGHT_DETAIL_INTENSITY = 0.2f;
-
-        private const float LIGHT_CENTER_RADIUS_START = 2f;
-        private const float LIGHT_CENTER_RADIUS_MUL = 2f;
-        private const float LIGHT_CENTER_FALLOFF = 1f;
-        private const float LIGHT_CENTER_INTENSITY = 0.3f;
-
-        // same light as center but the detail lights are hidden so this needs tweaked to look similar
-        private const float LIGHT_FAR_RADIUS_START = 3f;
-        private const float LIGHT_FAR_RADIUS_MUL = 1.7f;
-        private const float LIGHT_FAR_FALLOFF = LIGHT_CENTER_FALLOFF;
-        private const float LIGHT_FAR_INTENSITY = 1.0f;
-        private const float LIGHT_CENTER_VIEW_RANGE_SQ = 300 * 300; // squared range at which light gets turned off. this value is multiplied by the projection scale squared.
+        private const float LIGHT_RADIUS_START = 3.0f;
+        private const float LIGHT_RADIUS_MUL = 1f;
+        private const float LIGHT_FALLOFF = 1.0f;
+        private const float LIGHT_INTENSITY = 1.0f;
+        private const float LIGHT_VIEW_RANGE_SQ = 300 * 300; // squared range at which light gets turned off. this value is multiplied by the projection scale squared.
         #endregion
 
         #region Settings properties
@@ -698,9 +686,6 @@ namespace Digi.ProjectorPreview
 
             if(ProjectorPreviewMod.Instance.IsPlayer)
             {
-                lights = new MyLight[9];
-                corners = new Vector3[8];
-
                 projector.AppendingCustomInfo += CustomInfo;
                 projector.CubeGrid.PositionComp.OnPositionChanged += GridMoved;
 
@@ -933,10 +918,9 @@ namespace Digi.ProjectorPreview
                 {
                     needsMatrixUpdate = false;
 
-                    var l = lights[0];
-                    bool isLightVisible = (l != null && l.LightOn);
+                    bool isLightOn = (light != null && light.LightOn);
                     bool isProjectionVisible = (CustomProjection != null && projectionVisible);
-                    var relativeOffset = (isLightVisible || isProjectionVisible ? ((Settings.Offset.X * projector.WorldMatrix.Right) + ((Settings.Offset.Y + projector.CubeGrid.GridSize) * projector.WorldMatrix.Up) + (Settings.Offset.Z * projector.WorldMatrix.Backward)) : Vector3D.Zero);
+                    var relativeOffset = (isLightOn || isProjectionVisible ? ((Settings.Offset.X * projector.WorldMatrix.Right) + ((Settings.Offset.Y + projector.CubeGrid.GridSize) * projector.WorldMatrix.Up) + (Settings.Offset.Z * projector.WorldMatrix.Backward)) : Vector3D.Zero);
 
                     if(isProjectionVisible)
                     {
@@ -979,41 +963,13 @@ namespace Digi.ProjectorPreview
                         CustomProjection.PositionComp.Scale = ProjectionScale;
                     }
 
-                    if(isLightVisible)
+                    if(isLightOn)
                     {
-                        l.Position = projector.WorldMatrix.Translation + relativeOffset;
-
-                        if(!projectionVisible)
-                        {
-                            l.Range = LIGHT_FAR_RADIUS_START + (Settings.Scale * LIGHT_FAR_RADIUS_MUL);
-                            l.Falloff = LIGHT_FAR_FALLOFF;
-                            l.Intensity = LIGHT_FAR_INTENSITY * LightIntensity;
-                        }
-                        else
-                        {
-                            l.Range = LIGHT_CENTER_RADIUS_START + (Settings.Scale * LIGHT_CENTER_RADIUS_MUL);
-                            l.Falloff = LIGHT_CENTER_FALLOFF;
-                            l.Intensity = LIGHT_CENTER_INTENSITY * LightIntensity;
-                        }
-
-                        l.UpdateLight();
-
-                        if(CustomProjection != null && projectionVisible)
-                        {
-                            for(int i = 1; i < lights.Length; ++i)
-                            {
-                                l = lights[i];
-
-                                if(l == null)
-                                    break;
-
-                                l.LightOn = true;
-                                l.Position = Vector3D.Transform(corners[i - 1], CustomProjection.WorldMatrix);
-                                l.Range = LIGHT_DETAIL_RADIUS_START + (Settings.Scale * LIGHT_DETAIL_RADIUS_MUL);
-                                l.Intensity = LIGHT_DETAIL_INTENSITY * LightIntensity;
-                                l.UpdateLight();
-                            }
-                        }
+                        light.Position = projector.WorldMatrix.Translation + relativeOffset;
+                        light.Range = LIGHT_RADIUS_START + (Settings.Scale * LIGHT_RADIUS_MUL);
+                        //light.Falloff = LIGHT_FALLOFF;
+                        light.Intensity = LIGHT_INTENSITY * LightIntensity;
+                        light.UpdateLight();
                     }
                 }
                 #endregion
@@ -1340,18 +1296,10 @@ namespace Digi.ProjectorPreview
                     CustomProjection = null;
                 }
 
-                if(removeLights && lights != null)
+                if(removeLights && light != null)
                 {
-                    for(int i = 0; i < lights.Length; ++i)
-                    {
-                        var l = lights[i];
-
-                        if(l != null)
-                        {
-                            MyLights.RemoveLight(l);
-                            lights[i] = null;
-                        }
-                    }
+                    MyLights.RemoveLight(light);
+                    light = null;
                 }
             }
         }
@@ -1375,7 +1323,7 @@ namespace Digi.ProjectorPreview
         private void UpdateProjectionVisibility()
         {
             projectionVisible = false;
-            bool lodLightVisible = false;
+            bool lightVisible = false;
 
             if(Settings.Enabled && projector.IsWorking && OriginalBlueprint != null) // projecting miniature
             {
@@ -1384,7 +1332,7 @@ namespace Digi.ProjectorPreview
                 var scaleSq = Settings.Scale * Settings.Scale;
 
                 projectionVisible = (distance <= (PROJECTION_RANGE_ADD_SQ + (PROJECTION_RANGE_SCALE_SQ * scaleSq)));
-                lodLightVisible = (distance <= (LIGHT_CENTER_VIEW_RANGE_SQ * scaleSq));
+                lightVisible = (distance <= (LIGHT_VIEW_RANGE_SQ * scaleSq));
 
                 // set emissivity to match the projector's vanilla projecting state
                 ((MyCubeBlock)projector).SetEmissiveState(ProjectorPreviewMod.Instance.EMISSIVE_NAME_ALTERNATIVE, projector.Render.RenderObjectIDs[0], null);
@@ -1424,43 +1372,27 @@ namespace Digi.ProjectorPreview
 
                     needsMatrixUpdate = true;
                 }
-
-                // NOTE: skips 0-index because that one is shown at longer ranges
-                for(int i = 1; i < lights.Length; ++i)
-                {
-                    var l = lights[i];
-
-                    if(l == null || !l.LightOn)
-                        break;
-
-                    l.LightOn = false;
-                    l.UpdateLight();
-                }
             }
 
             // light[0] used for longer ranges
-            if(lodLightVisible && LightIntensity > 0)
+            if(lightVisible && LightIntensity > 0)
             {
-                var l = lights[0];
-
-                if(l == null)
+                if(light == null)
                 {
-                    lights[0] = CreateLight(true);
+                    light = CreateLight();
                 }
-                else if(!l.LightOn)
+                else if(!light.LightOn)
                 {
-                    l.LightOn = true;
+                    light.LightOn = true;
                     needsMatrixUpdate = true;
                 }
             }
             else
             {
-                var l = lights[0];
-
-                if(l != null && l.LightOn)
+                if(light != null && light.LightOn)
                 {
-                    l.LightOn = false;
-                    l.UpdateLight();
+                    light.LightOn = false;
+                    light.UpdateLight();
                 }
             }
         }
@@ -1527,16 +1459,6 @@ namespace Digi.ProjectorPreview
 
                 SetLargestGridLength(CustomProjection);
 
-                var box = CustomProjection.PositionComp.LocalAABB;
-                box.Inflate(CustomProjection.GridSize); // offset the corners outwards to allow lights to light the surfaces properly
-                box.GetCorners(corners); // store local corner vectors, to be used with lights
-
-                for(int i = 0; i < lights.Length; ++i)
-                {
-                    if(lights[i] == null)
-                        lights[i] = CreateLight(i == 0);
-                }
-
                 if(ProjectorPreviewMod.Debug)
                     Log.Info($"SpawnCompleted() :: name={CustomProjection.DisplayName}");
             }
@@ -1546,13 +1468,13 @@ namespace Digi.ProjectorPreview
             }
         }
 
-        private static MyLight CreateLight(bool centerLight)
+        private static MyLight CreateLight()
         {
             var l = MyLights.AddLight();
-            l.Start(centerLight ? "ProjectorCenterLight" : "ProjectorDetailLight");
+            l.Start("ProjectorDetailLight");
             l.Color = ProjectorPreviewMod.Instance.LIGHT_COLOR;
-            l.Intensity = LIGHT_DETAIL_INTENSITY; // centerLight settings don't matter here as it will be overwritten as needed in the update anyway
-            l.Falloff = LIGHT_DETAIL_FALLOFF;
+            l.Intensity = LIGHT_INTENSITY;
+            l.Falloff = LIGHT_FALLOFF;
             l.PointLightOffset = 0f;
             l.LightOn = true;
             return l;
