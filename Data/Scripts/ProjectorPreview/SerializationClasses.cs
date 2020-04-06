@@ -38,7 +38,14 @@ namespace Digi.ProjectorPreview
 
         public override string ToString()
         {
-            return $"Enabled = {Enabled}\nStatus = {Status}\nSeeThrough = {SeeThrough}\nScale = {Math.Round(Scale, 4)}\nOffset = {Math.Round(Offset.X, 4)}, {Math.Round(Offset.Y, 4)}, {Math.Round(Offset.Z, 4)}\nRotateRad = {Math.Round(RotateRad.X, 4)}, {Math.Round(RotateRad.Y, 4)}, {Math.Round(RotateRad.Z, 4)}\nSpin = {Spin}\nLightIntensity = {Math.Round(LightIntensity, 2)}";
+            return $@"Enabled = {Enabled.ToString()}
+Status = {Status.ToString()}
+SeeThrough = {SeeThrough.ToString()}
+Scale = {Math.Round(Scale, 4).ToString()}
+Offset = {Offset.X.ToString("N4")}, {Offset.Y.ToString("N4")}, {Offset.Z.ToString("N4")}
+RotateRad = {RotateRad.X.ToString("N4")}, {RotateRad.Y.ToString("N4")}, {RotateRad.Z.ToString("N4")}
+Spin = {Spin.ToString()}
+LightIntensity = {LightIntensity.ToString("N2")}";
         }
     }
 
