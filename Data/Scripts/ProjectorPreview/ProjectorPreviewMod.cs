@@ -81,7 +81,7 @@ namespace Digi.ProjectorPreview
             Instance = this;
             Log.ModName = "Projector Preview";
 
-            Log.Info("Mod version: 1"); // DEBUG for easy check if the correct mod version is installed, increment on updates
+            Log.Info("Mod version: 2"); // DEBUG for easy check if the correct mod version is installed, increment on updates
 
             DebugEnabled = MyAPIGateway.Utilities.FileExistsInLocalStorage("debug", typeof(ProjectorPreviewMod));
 
