@@ -292,8 +292,7 @@ namespace Digi.ProjectorPreview
             if(projector.ProjectedGrid != null)
                 projector.SetProjectedGrid(null);
 
-            if(projector.Storage != null)
-                projector.Storage.Remove(ProjectorPreviewMod.Instance.BLUEPRINT_GUID);
+            SerializedBlueprint = null;
 
             var bp = (MyObjectBuilder_CubeGrid)projector.CubeGrid.GetObjectBuilder();
 
@@ -1111,7 +1110,7 @@ namespace Digi.ProjectorPreview
                     Log.Info($"  Loaded={loadedSomething.ToString()}; settings:\n{Settings.ToString()}");
             }
 
-            if(projector.Storage.TryGetValue(ProjectorPreviewMod.Instance.BLUEPRINT_GUID, out rawData))
+            if(projector.Storage.TryGetValue(ProjectorPreviewMod.Instance.BLUEPRINT_GUID, out rawData) && !string.IsNullOrEmpty(rawData))
             {
                 if(blueprintLoadTaskRunning)
                 {
@@ -1276,9 +1275,7 @@ namespace Digi.ProjectorPreview
             if(removeOriginalBP)
             {
                 OriginalBlueprint = null;
-
-                if(projector.Storage != null)
-                    projector.Storage.RemoveValue(ProjectorPreviewMod.Instance.BLUEPRINT_GUID);
+                SerializedBlueprint = null;
             }
 
             if(ProjectorPreviewMod.Instance.IsPlayer)
