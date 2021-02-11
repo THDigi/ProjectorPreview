@@ -675,6 +675,15 @@ namespace Digi.ProjectorPreview
 
         private void Initialize()
         {
+            try
+            {
+                ProjectorPreviewMod.Instance.SetupTerminalControls();
+            }
+            catch(Exception e)
+            {
+                Log.Error(e);
+            }
+
             if(projector.CubeGrid.Physics == null)
             {
                 NeedsUpdate = MyEntityUpdateEnum.NONE;
@@ -696,8 +705,6 @@ namespace Digi.ProjectorPreview
                 if(MyAPIGateway.Multiplayer.IsServer)
                     ReadLegacyStorage();
             }
-
-            ProjectorPreviewMod.Instance.SetupTerminalControls();
         }
 
         public override void Close()
@@ -741,7 +748,7 @@ namespace Digi.ProjectorPreview
                     if(previewCooldown > 0 && --previewCooldown <= 0)
                     {
                         if(ProjectorPreviewMod.IsInProjectorTerminal)
-                            ProjectorPreviewMod.Instance?.ControlPreview?.UpdateVisual();
+                            ProjectorPreviewMod.Instance?.ControlProjectorMode?.UpdateVisual();
                     }
 
                     if(useThisShipCooldown > 0 && --useThisShipCooldown <= 0)

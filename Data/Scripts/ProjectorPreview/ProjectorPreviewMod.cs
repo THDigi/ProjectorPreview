@@ -35,12 +35,14 @@ namespace Digi.ProjectorPreview
         public float TransparencyDecor;
         public float TransparencyDecorHighlight;
         public IMyProjector ViewingTerminalOf = null;
-        public IMyTerminalControl ControlPreview = null;
+        public IMyTerminalControl ControlProjectorMode = null;
         public IMyTerminalControl ControlUseThisShip = null;
         public IMyTerminalControl ControlRemoveButton = null;
         public readonly IMyTerminalControl[] ControlRotate = new IMyTerminalControl[3];
-        public readonly List<IMyTerminalControl> SortedControls = new List<IMyTerminalControl>(); // all controls properly sorted
         public readonly List<IMyTerminalControl> RefreshControls = new List<IMyTerminalControl>(); // controls to be refreshed on certain actions
+        private readonly HashSet<IMyTerminalControl> ControlsAfterEverything = new HashSet<IMyTerminalControl>();
+        private readonly HashSet<IMyTerminalControl> ControlsAfterRemoveButton = new HashSet<IMyTerminalControl>();
+        private readonly List<IMyTerminalControl> ReorderedControls = new List<IMyTerminalControl>(16);
         private bool createdTerminalControls = false;
         public readonly List<IMyPlayer> Players = new List<IMyPlayer>();
 
@@ -151,7 +153,6 @@ namespace Digi.ProjectorPreview
         private void UpdateConfigValues()
         {
             var cfg = MyAPIGateway.Session?.Config;
-
             if(cfg == null)
                 return;
 
@@ -189,7 +190,6 @@ namespace Digi.ProjectorPreview
                 }
 
                 var data = MyAPIGateway.Utilities.SerializeFromBinary<PacketData>(bytes); // this will throw errors on invalid data
-
                 if(data == null)
                 {
                     if(Debug)
@@ -199,7 +199,6 @@ namespace Digi.ProjectorPreview
                 }
 
                 IMyEntity ent;
-
                 if(!MyAPIGateway.Entities.TryGetEntityById(data.EntityId, out ent) || ent.Closed || !(ent is IMyProjector))
                 {
                     if(Debug)
@@ -209,7 +208,6 @@ namespace Digi.ProjectorPreview
                 }
 
                 var logic = ent.GameLogic.GetAs<Projector>();
-
                 if(logic == null)
                 {
                     if(Debug)
@@ -221,25 +219,26 @@ namespace Digi.ProjectorPreview
                 switch(data.Type)
                 {
                     case PacketType.SETTINGS:
+                    {
+                        if(data.Settings == null)
                         {
-                            if(data.Settings == null)
-                            {
-                                if(Debug)
-                                    Log.Error($"PacketReceived(); {data.Type.ToString()}; settings are null!");
-
-                                return;
-                            }
-
                             if(Debug)
-                                Log.Info($"PacketReceived(); Settings; {(MyAPIGateway.Multiplayer.IsServer ? " Relaying to clients;" : "")}Valid!\n{logic.Settings}");
+                                Log.Error($"PacketReceived(); {data.Type.ToString()}; settings are null!");
 
-                            logic.UpdateSettings(data.Settings);
-                            logic.SaveSettings();
-
-                            if(MyAPIGateway.Multiplayer.IsServer)
-                                RelayToClients(((IMyCubeBlock)ent).CubeGrid.GetPosition(), bytes, data.Sender);
+                            return;
                         }
+
+                        if(Debug)
+                            Log.Info($"PacketReceived(); Settings; {(MyAPIGateway.Multiplayer.IsServer ? " Relaying to clients;" : "")}Valid!\n{logic.Settings}");
+
+                        logic.UpdateSettings(data.Settings);
+                        logic.SaveSettings();
+
+                        if(MyAPIGateway.Multiplayer.IsServer)
+                            RelayToClients(((IMyCubeBlock)ent).CubeGrid.GetPosition(), bytes, data.Sender);
+
                         break;
+                    }
                     case PacketType.REMOVE:
                         logic.RemoveBlueprints_Receiver(bytes, data.Sender);
                         break;
@@ -302,17 +301,58 @@ namespace Digi.ProjectorPreview
             try
             {
                 ViewingTerminalOf = block as IMyProjector;
+                if(ViewingTerminalOf == null)
+                    return;
 
-                if(ViewingTerminalOf != null)
+                ViewingTerminalOf.RefreshCustomInfo();
+
+                if(!createdTerminalControls || ControlRemoveButton == null)
+                    return;
+
+                ReorderedControls.Clear();
+
+                bool foundRemoveButton = false;
+
+                for(int i = 0; i < controls.Count; ++i)
                 {
-                    ViewingTerminalOf.RefreshCustomInfo();
+                    var c = controls[i];
+                    if(c == ControlUseThisShip || ControlsAfterEverything.Contains(c) || ControlsAfterRemoveButton.Contains(c))
+                        continue; // skips controls that we're gonna add later
 
-                    if(SortedControls.Count == 0)
-                        return;
+                    if(c == ControlRemoveButton)
+                    {
+                        foundRemoveButton = true;
+                        ReorderedControls.Add(ControlUseThisShip);
+                        ReorderedControls.Add(ControlRemoveButton);
 
-                    controls.Clear();
-                    controls.AddList(SortedControls);
+                        foreach(var mc in ControlsAfterRemoveButton)
+                        {
+                            ReorderedControls.Add(mc);
+                        }
+                    }
+                    else
+                    {
+                        ReorderedControls.Add(c);
+                    }
                 }
+
+                if(!foundRemoveButton)
+                    return;
+
+                controls.Clear();
+                controls.EnsureCapacity(ReorderedControls.Count + ControlsAfterEverything.Count);
+
+                foreach(var c in ReorderedControls)
+                {
+                    controls.Add(c);
+                }
+
+                foreach(var c in ControlsAfterEverything)
+                {
+                    controls.Add(c);
+                }
+
+                ReorderedControls.Clear();
             }
             catch(Exception e)
             {
@@ -336,33 +376,37 @@ namespace Digi.ProjectorPreview
 
             var tc = MyAPIGateway.TerminalControls;
 
-            // get existing controls before creating the ones for this mod
-            List<IMyTerminalControl> vanillaControls;
-            tc.GetControls<IMyProjector>(out vanillaControls);
+            #region Vanilla control editing
+            List<IMyTerminalControl> existingControls;
+            tc.GetControls<IMyProjector>(out existingControls);
 
-            #region Top custom controls
+            for(int i = 0; i < existingControls.Count; ++i)
             {
-                var c = tc.CreateControl<IMyTerminalControlOnOffSwitch, IMyProjector>(CONTROL_PREFIX + "Enabled");
-                c.Title = MyStringId.GetOrCompute("Projector Mode");
-                c.Tooltip = MyStringId.GetOrCompute("Change how to display the projection.\nEach mode has its own configurable controls.\n\n(Added by Projector Preview mod)");
-                c.OnText = MyStringId.GetOrCompute("Preview");
-                c.OffText = MyStringId.GetOrCompute("Build");
-                c.SupportsMultipleBlocks = true;
-                c.Enabled = Projector.UI_Preview_Enabled;
-                c.Getter = Projector.UI_Preview_Getter;
-                c.Setter = Projector.UI_Preview_Setter;
+                var vc = existingControls[i];
 
-                CreateActionPreviewMode(c);
+                if(REFRESH_VANILLA_IDS.Contains(vc.Id))
+                {
+                    RefreshControls.Add(vc);
+                }
 
-                RefreshControls.Add(c);
-                ControlPreview = c;
-                // don't add to SortedControls here, it's added later
+                if(ControlRemoveButton == null && vc.Id == REMOVE_BUTTON_ID)
+                {
+                    ControlRemoveButton = vc;
 
-                tc.AddControl<IMyProjector>(c);
+                    var button = (IMyTerminalControlButton)vc;
+
+                    // edit the button to be visible when the custom projection is visible as well as normal projection
+                    button.Enabled = Projector.UI_RemoveButton_Enabled;
+
+                    // edit the action to remove both the vanilla projection and the custom projection
+                    button.Action = Projector.UI_RemoveButton_Action;
+                }
             }
+            #endregion
 
             {
                 var c = tc.CreateControl<IMyTerminalControlCombobox, IMyProjector>(CONTROL_PREFIX + "UseThisShip");
+                c.SupportsMultipleBlocks = false;
                 c.Title = MyStringId.GetOrCompute("Load this ship...");
                 c.Tooltip = MyStringId.GetOrCompute("Use the current ship as the blueprint for this projector.\nThis copies the ship in its current state or with all current blocks fixed/built, it does not automatically update it as it changes.\n\n(Added by Projector Preview mod)");
                 c.Enabled = (b) => b.IsWorking;
@@ -376,68 +420,74 @@ namespace Digi.ProjectorPreview
                     itemNames: new string[] { null, "(Preview) Load this ship - as is", "(Preview) Load this ship - built&fixed" });
 
                 ControlUseThisShip = c;
-                // don't add to SortedControls here, it's added later
+                // this one gets added manually before remove button
 
                 tc.AddControl<IMyProjector>(c);
             }
-            #endregion
 
-            #region Sorting and vanilla control editing
-            for(int i = 0; i < vanillaControls.Count; ++i)
+            // vanilla remove button would be here
+
             {
-                var vc = vanillaControls[i];
+                var c = tc.CreateControl<IMyTerminalControlOnOffSwitch, IMyProjector>(CONTROL_PREFIX + "Enabled");
+                c.SupportsMultipleBlocks = true;
+                c.Title = MyStringId.GetOrCompute("Projector Mode");
+                c.Tooltip = MyStringId.GetOrCompute("Change how to display the projection.\nEach mode has its own configurable controls.\n\n(Added by Projector Preview mod)");
+                c.OnText = MyStringId.GetOrCompute("Preview");
+                c.OffText = MyStringId.GetOrCompute("Build");
+                c.Enabled = Projector.UI_Preview_Enabled;
+                c.Getter = Projector.UI_Preview_Getter;
+                c.Setter = Projector.UI_Preview_Setter;
 
-                if(REFRESH_VANILLA_IDS.Contains(vc.Id))
-                    RefreshControls.Add(vc);
+                CreateActionPreviewMode(c);
 
-                if(vc.Id == REMOVE_BUTTON_ID)
-                {
-                    // add controls before the button
-                    SortedControls.Add(ControlUseThisShip);
+                RefreshControls.Add(c);
+                ControlProjectorMode = c;
+                ControlsAfterRemoveButton.Add(c);
 
-                    // add the button
-                    ControlRemoveButton = vc;
-                    SortedControls.Add(vc);
-
-                    // add controls right after the button
-                    SortedControls.Add(tc.CreateControl<IMyTerminalControlSeparator, IMyProjector>(string.Empty));
-                    SortedControls.Add(ControlPreview);
-                    SortedControls.Add(tc.CreateControl<IMyTerminalControlSeparator, IMyProjector>(string.Empty));
-
-                    var label = tc.CreateControl<IMyTerminalControlLabel, IMyProjector>(string.Empty);
-                    label.Label = MyStringId.GetOrCompute("Build mode configuration");
-                    SortedControls.Add(label);
-
-                    var button = (IMyTerminalControlButton)vc;
-
-                    // edit the button to be visible when the custom projection is visible as well as normal projection
-                    button.Enabled = Projector.UI_RemoveButton_Enabled;
-
-                    // edit the action to remove both the vanilla projection and the custom projection
-                    button.Action = Projector.UI_RemoveButton_Action;
-                }
-                else
-                {
-                    SortedControls.Add(vc);
-                }
+                tc.AddControl<IMyProjector>(c);
             }
-            #endregion
 
-            #region Bottom controls
             {
-                SortedControls.Add(tc.CreateControl<IMyTerminalControlSeparator, IMyProjector>(string.Empty));
+                var c = tc.CreateControl<IMyTerminalControlSeparator, IMyProjector>(string.Empty);
+                c.SupportsMultipleBlocks = true;
+                ControlsAfterRemoveButton.Add(c);
 
-                var label = tc.CreateControl<IMyTerminalControlLabel, IMyProjector>(string.Empty);
-                label.Label = MyStringId.GetOrCompute("Preview mode configuration");
-                SortedControls.Add(label);
-                // no reason to add these to the TerminalControls
+                // don't AddControl() because it'll be confusing if sorting doesn't work
+            }
+
+            {
+                var c = tc.CreateControl<IMyTerminalControlLabel, IMyProjector>(string.Empty);
+                c.SupportsMultipleBlocks = true;
+                c.Label = MyStringId.GetOrCompute("Build mode configuration");
+                ControlsAfterRemoveButton.Add(c);
+
+                // don't AddControl() because it'll be confusing if sorting doesn't work
+            }
+
+            // rest of vanilla controls would fit here
+
+            {
+                var c = tc.CreateControl<IMyTerminalControlSeparator, IMyProjector>(string.Empty);
+                c.SupportsMultipleBlocks = true;
+                ControlsAfterEverything.Add(c);
+
+                tc.AddControl<IMyProjector>(c);
+            }
+
+            {
+                var c = tc.CreateControl<IMyTerminalControlLabel, IMyProjector>(string.Empty);
+                c.Label = MyStringId.GetOrCompute("Preview mode configuration");
+                c.SupportsMultipleBlocks = true;
+                ControlsAfterEverything.Add(c);
+
+                tc.AddControl<IMyProjector>(c);
             }
 
             {
                 var c = tc.CreateControl<IMyTerminalControlSlider, IMyProjector>(CONTROL_PREFIX + "Scale");
+                c.SupportsMultipleBlocks = true;
                 c.Title = MyStringId.GetOrCompute("Hologram scale");
                 c.Tooltip = MyStringId.GetOrCompute("The hologram size in meters.");
-                c.SupportsMultipleBlocks = true;
                 c.Enabled = Projector.UI_Generic_Enabled;
                 c.SetLogLimits(Projector.UI_Scale_LogLimitMin, Projector.UI_Scale_LogLimitMax);
                 c.Getter = Projector.UI_Scale_Getter;
@@ -448,7 +498,7 @@ namespace Digi.ProjectorPreview
                     modifier: 0.1f,
                     gridSizeDefaultValue: true);
 
-                SortedControls.Add(c);
+                ControlsAfterEverything.Add(c);
                 RefreshControls.Add(c);
 
                 tc.AddControl<IMyProjector>(c);
@@ -456,6 +506,7 @@ namespace Digi.ProjectorPreview
 
             {
                 var c = tc.CreateControl<IMyTerminalControlCheckbox, IMyProjector>(CONTROL_PREFIX + "StatusMode");
+                c.SupportsMultipleBlocks = true;
                 c.Title = MyStringId.GetOrCompute("Status mode");
                 c.Tooltip = MyStringId.GetOrCompute("Colors the projection depending on the status of the projector ship's blocks." +
                                                     "\n" +
@@ -466,14 +517,13 @@ namespace Digi.ProjectorPreview
                                                     "\nTeal = orientation/position is wrong (only shows up in build stage)." +
                                                     "\nDark purple = color is different." +
                                                     "\nLight purple = type is different.");
-                c.SupportsMultipleBlocks = true;
                 c.Enabled = Projector.UI_Generic_Enabled;
                 c.Getter = Projector.UI_Status_Getter;
                 c.Setter = Projector.UI_Status_Setter;
 
                 CreateAction<IMyProjector>(c, iconPack: "Missile");
 
-                SortedControls.Add(c);
+                ControlsAfterEverything.Add(c);
                 RefreshControls.Add(c);
 
                 tc.AddControl<IMyProjector>(c);
@@ -481,16 +531,16 @@ namespace Digi.ProjectorPreview
 
             {
                 var c = tc.CreateControl<IMyTerminalControlCheckbox, IMyProjector>(CONTROL_PREFIX + "SeeThrough");
+                c.SupportsMultipleBlocks = true;
                 c.Title = MyStringId.GetOrCompute("See-through armor");
                 c.Tooltip = MyStringId.GetOrCompute("Makes armor and decorative blocks more transparent.");
-                c.SupportsMultipleBlocks = true;
                 c.Enabled = Projector.UI_Generic_Enabled;
                 c.Getter = Projector.UI_SeeThrough_Getter;
                 c.Setter = Projector.UI_SeeThrough_Setter;
 
                 CreateAction<IMyProjector>(c, iconPack: "MovingObject");
 
-                SortedControls.Add(c);
+                ControlsAfterEverything.Add(c);
                 RefreshControls.Add(c);
 
                 tc.AddControl<IMyProjector>(c);
@@ -498,9 +548,9 @@ namespace Digi.ProjectorPreview
 
             {
                 var c = tc.CreateControl<IMyTerminalControlSlider, IMyProjector>(CONTROL_PREFIX + "OffsetX");
+                c.SupportsMultipleBlocks = true;
                 c.Title = MyStringId.GetOrCompute("Offset X");
                 c.Tooltip = MyStringId.GetOrCompute("Changes the projection position.");
-                c.SupportsMultipleBlocks = true;
                 c.Enabled = Projector.UI_Generic_Enabled;
                 c.Getter = (b) => Projector.UI_Offset_Getter(b, 0);
                 c.Setter = (b, v) => Projector.UI_Offset_Setter(b, v, 0);
@@ -509,7 +559,7 @@ namespace Digi.ProjectorPreview
 
                 CreateAction<IMyProjector>(c, modifier: 0.1f);
 
-                SortedControls.Add(c);
+                ControlsAfterEverything.Add(c);
                 RefreshControls.Add(c);
 
                 tc.AddControl<IMyProjector>(c);
@@ -517,9 +567,9 @@ namespace Digi.ProjectorPreview
 
             {
                 var c = tc.CreateControl<IMyTerminalControlSlider, IMyProjector>(CONTROL_PREFIX + "OffsetY");
+                c.SupportsMultipleBlocks = true;
                 c.Title = MyStringId.GetOrCompute("Offset Y");
                 c.Tooltip = MyStringId.GetOrCompute("Changes the projection position.");
-                c.SupportsMultipleBlocks = true;
                 c.Enabled = Projector.UI_Generic_Enabled;
                 c.Getter = (b) => Projector.UI_Offset_Getter(b, 1);
                 c.Setter = (b, v) => Projector.UI_Offset_Setter(b, v, 1);
@@ -528,7 +578,7 @@ namespace Digi.ProjectorPreview
 
                 CreateAction<IMyProjector>(c, modifier: 0.1f);
 
-                SortedControls.Add(c);
+                ControlsAfterEverything.Add(c);
                 RefreshControls.Add(c);
 
                 tc.AddControl<IMyProjector>(c);
@@ -536,9 +586,9 @@ namespace Digi.ProjectorPreview
 
             {
                 var c = tc.CreateControl<IMyTerminalControlSlider, IMyProjector>(CONTROL_PREFIX + "OffsetZ");
+                c.SupportsMultipleBlocks = true;
                 c.Title = MyStringId.GetOrCompute("Offset Z");
                 c.Tooltip = MyStringId.GetOrCompute("Changes the projection position.");
-                c.SupportsMultipleBlocks = true;
                 c.Enabled = Projector.UI_Generic_Enabled;
                 c.Getter = (b) => Projector.UI_Offset_Getter(b, 2);
                 c.Setter = (b, v) => Projector.UI_Offset_Setter(b, v, 2);
@@ -547,7 +597,7 @@ namespace Digi.ProjectorPreview
 
                 CreateAction<IMyProjector>(c, modifier: 0.1f);
 
-                SortedControls.Add(c);
+                ControlsAfterEverything.Add(c);
                 RefreshControls.Add(c);
 
                 tc.AddControl<IMyProjector>(c);
@@ -556,15 +606,15 @@ namespace Digi.ProjectorPreview
             {
                 var c = tc.CreateControl<IMyTerminalControlSeparator, IMyProjector>(string.Empty);
                 c.SupportsMultipleBlocks = true;
-                SortedControls.Add(c);
+                ControlsAfterEverything.Add(c);
                 tc.AddControl<IMyProjector>(c);
             }
 
             {
                 var c = tc.CreateControl<IMyTerminalControlSlider, IMyProjector>(CONTROL_PREFIX + "RotateX");
+                c.SupportsMultipleBlocks = true;
                 c.Title = MyStringId.GetOrCompute("Rotate X / Pitch");
                 c.Tooltip = MyStringId.GetOrCompute("Rotate projection along the X axis. This can be turned into constant spinning by checking the checkbox below.");
-                c.SupportsMultipleBlocks = true;
                 c.Enabled = Projector.UI_Generic_Enabled;
                 c.SetLimits(-Projector.MIN_MAX_ROTATE, Projector.MIN_MAX_ROTATE);
                 c.Getter = (b) => Projector.UI_Rotate_Getter(b, 0);
@@ -573,24 +623,25 @@ namespace Digi.ProjectorPreview
 
                 CreateAction<IMyProjector>(c, modifier: 0.1f);
 
-                SortedControls.Add(c);
+                ControlsAfterEverything.Add(c);
                 RefreshControls.Add(c);
                 ControlRotate[0] = c;
 
                 tc.AddControl<IMyProjector>(c);
             }
+
             {
                 var c = tc.CreateControl<IMyTerminalControlCheckbox, IMyProjector>(CONTROL_PREFIX + "SpinX");
+                c.SupportsMultipleBlocks = true;
                 c.Title = MyStringId.GetOrCompute("Spin X / Pitch");
                 c.Tooltip = MyStringId.GetOrCompute("Makes the Rotate X / Pitch slider act as spin speed.");
-                c.SupportsMultipleBlocks = true;
                 c.Enabled = Projector.UI_Generic_Enabled;
                 c.Getter = (b) => Projector.UI_Spin_Getter(b, 0);
                 c.Setter = (b, v) => Projector.UI_Spin_Setter(b, v, 0);
 
                 CreateAction<IMyProjector>(c);
 
-                SortedControls.Add(c);
+                ControlsAfterEverything.Add(c);
                 RefreshControls.Add(c);
 
                 tc.AddControl<IMyProjector>(c);
@@ -598,9 +649,9 @@ namespace Digi.ProjectorPreview
 
             {
                 var c = tc.CreateControl<IMyTerminalControlSlider, IMyProjector>(CONTROL_PREFIX + "RotateY");
+                c.SupportsMultipleBlocks = true;
                 c.Title = MyStringId.GetOrCompute("Rotate Y / Yaw");
                 c.Tooltip = MyStringId.GetOrCompute("Rotate projection along the Y axis. This can be turned into constant spinning by checking the checkbox below.");
-                c.SupportsMultipleBlocks = true;
                 c.Enabled = Projector.UI_Generic_Enabled;
                 c.SetLimits(-Projector.MIN_MAX_ROTATE, Projector.MIN_MAX_ROTATE);
                 c.Getter = (b) => Projector.UI_Rotate_Getter(b, 1);
@@ -609,7 +660,7 @@ namespace Digi.ProjectorPreview
 
                 CreateAction<IMyProjector>(c, modifier: 0.1f);
 
-                SortedControls.Add(c);
+                ControlsAfterEverything.Add(c);
                 RefreshControls.Add(c);
                 ControlRotate[1] = c;
 
@@ -617,16 +668,16 @@ namespace Digi.ProjectorPreview
             }
             {
                 var c = tc.CreateControl<IMyTerminalControlCheckbox, IMyProjector>(CONTROL_PREFIX + "SpinY");
+                c.SupportsMultipleBlocks = true;
                 c.Title = MyStringId.GetOrCompute("Spin Y / Yaw");
                 c.Tooltip = MyStringId.GetOrCompute("Makes the Rotate Y / Yaw slider act as spin speed.");
-                c.SupportsMultipleBlocks = true;
                 c.Enabled = Projector.UI_Generic_Enabled;
                 c.Getter = (b) => Projector.UI_Spin_Getter(b, 1);
                 c.Setter = (b, v) => Projector.UI_Spin_Setter(b, v, 1);
 
                 CreateAction<IMyProjector>(c);
 
-                SortedControls.Add(c);
+                ControlsAfterEverything.Add(c);
                 RefreshControls.Add(c);
 
                 tc.AddControl<IMyProjector>(c);
@@ -634,9 +685,9 @@ namespace Digi.ProjectorPreview
 
             {
                 var c = tc.CreateControl<IMyTerminalControlSlider, IMyProjector>(CONTROL_PREFIX + "RotateZ");
+                c.SupportsMultipleBlocks = true;
                 c.Title = MyStringId.GetOrCompute("Rotate Z / Roll");
                 c.Tooltip = MyStringId.GetOrCompute("Rotate projection along the Z axis. This can be turned into constant spinning by checking the checkbox below.");
-                c.SupportsMultipleBlocks = true;
                 c.Enabled = Projector.UI_Generic_Enabled;
                 c.SetLimits(-Projector.MIN_MAX_ROTATE, Projector.MIN_MAX_ROTATE);
                 c.Getter = (b) => Projector.UI_Rotate_Getter(b, 2);
@@ -645,7 +696,7 @@ namespace Digi.ProjectorPreview
 
                 CreateAction<IMyProjector>(c, modifier: 0.1f);
 
-                SortedControls.Add(c);
+                ControlsAfterEverything.Add(c);
                 RefreshControls.Add(c);
                 ControlRotate[2] = c;
 
@@ -653,16 +704,16 @@ namespace Digi.ProjectorPreview
             }
             {
                 var c = tc.CreateControl<IMyTerminalControlCheckbox, IMyProjector>(CONTROL_PREFIX + "SpinZ");
+                c.SupportsMultipleBlocks = true;
                 c.Title = MyStringId.GetOrCompute("Spin Z / Roll");
                 c.Tooltip = MyStringId.GetOrCompute("Makes the Rotate Z / Roll slider act as spin speed.");
-                c.SupportsMultipleBlocks = true;
                 c.Enabled = Projector.UI_Generic_Enabled;
                 c.Getter = (b) => Projector.UI_Spin_Getter(b, 2);
                 c.Setter = (b, v) => Projector.UI_Spin_Setter(b, v, 2);
 
                 CreateAction<IMyProjector>(c);
 
-                SortedControls.Add(c);
+                ControlsAfterEverything.Add(c);
                 RefreshControls.Add(c);
 
                 tc.AddControl<IMyProjector>(c);
@@ -670,9 +721,9 @@ namespace Digi.ProjectorPreview
 
             {
                 var c = tc.CreateControl<IMyTerminalControlSlider, IMyProjector>(CONTROL_PREFIX + "LightIntensity");
+                c.SupportsMultipleBlocks = true;
                 c.Title = MyStringId.GetOrCompute("Hologram light intensity");
                 c.Tooltip = MyStringId.GetOrCompute("The intensity of the light emitted by the hologram.");
-                c.SupportsMultipleBlocks = true;
                 c.Enabled = Projector.UI_Generic_Enabled;
                 c.SetLimits(Projector.MIN_LIGHTINTENSITY, Projector.MAX_LIGHTINTENSITY);
                 c.Getter = Projector.UI_LightIntensity_Getter;
@@ -681,12 +732,11 @@ namespace Digi.ProjectorPreview
 
                 CreateAction<IMyProjector>(c, modifier: 0.1f);
 
-                SortedControls.Add(c);
+                ControlsAfterEverything.Add(c);
                 RefreshControls.Add(c);
 
                 tc.AddControl<IMyProjector>(c);
             }
-            #endregion
         }
 
         private void CreateActionPreviewMode(IMyTerminalControlOnOffSwitch c)
