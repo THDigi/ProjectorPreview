@@ -43,6 +43,7 @@ namespace Digi.ProjectorPreview
         private Vector3D relativeOffset = Vector3D.Zero;
         private bool needsMatrixUpdate = false;
         private bool needsConstantMatrixUpdate = false;
+        private bool needsSubpartRefresh = false;
         private MyLight light = null;
         private int skipDebug = 0;
 
@@ -967,7 +968,20 @@ namespace Digi.ProjectorPreview
 
                         CustomProjection.WorldMatrix = matrix;
                         CustomProjection.PositionComp.Scale = ProjectionScale;
+
+                        if(needsSubpartRefresh)
+                        {
+                            foreach(MyCubeBlock block in CustomProjection.GetFatBlocks())
+                            {
+                                if(block.Subparts.Count > 0)
+                                {
+                                    RecursivelyFixSubparts(block);
+                                }
+                            }
+                        }
                     }
+
+                    needsSubpartRefresh = false;
 
                     if(isLightOn)
                     {
@@ -1027,6 +1041,24 @@ namespace Digi.ProjectorPreview
                     OriginalBlueprint = null;
                 }
                 #endregion
+            }
+        }
+
+        void RecursivelyFixSubparts(MyEntity ent)
+        {
+            // TODO maybe something faster?
+            ent.Render.RemoveRenderObjects();
+            ent.Render.AddRenderObjects();
+            //ent.Render.UpdateRenderObjectLocal(ent.PositionComp.LocalMatrixRef);
+            //ent.Render.UpdateTransparency();
+            //ent.Render.UpdateRenderObject(projectionVisible);
+
+            if(ent.Subparts != null && ent.Subparts.Count > 0)
+            {
+                foreach(var subpart in ent.Subparts.Values)
+                {
+                    RecursivelyFixSubparts(subpart);
+                }
             }
         }
 
@@ -1359,6 +1391,7 @@ namespace Digi.ProjectorPreview
                 {
                     CustomProjection.Render.Visible = true;
                     needsMatrixUpdate = true;
+                    needsSubpartRefresh = true;
                 }
             }
             else

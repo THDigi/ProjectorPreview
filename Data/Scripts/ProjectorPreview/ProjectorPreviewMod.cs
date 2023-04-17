@@ -12,7 +12,7 @@ using VRage.ObjectBuilders;
 using VRage.Utils;
 using VRageMath;
 
-// DEBUG TODO: if IgnoreSize=false, set IgnoreSize=true clientside when opening blueprints menu
+// TODO: if IgnoreSize=false, set IgnoreSize=true clientside when opening blueprints menu
 // then if they select a different size grid, force preview mode only.
 
 // TODO block place/remove sync between real grid and projected grid
@@ -83,7 +83,7 @@ namespace Digi.ProjectorPreview
             Instance = this;
             Log.ModName = "Projector Preview";
 
-            Log.Info("Mod version: 2"); // DEBUG for easy check if the correct mod version is installed, increment on updates
+            Log.Info("Mod version: 3"); // HACK: for easy check if the correct mod version is installed, increment on updates
 
             DebugEnabled = MyAPIGateway.Utilities.FileExistsInLocalStorage("debug", typeof(ProjectorPreviewMod));
 
