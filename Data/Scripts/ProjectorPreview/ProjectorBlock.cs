@@ -807,7 +807,12 @@ namespace Digi.ProjectorPreview
                         if(++skipDebug > 60 * 3)
                         {
                             skipDebug = 0;
-                            Log.Info($"UpdateAfterSimulation() Status: {projector.CustomName} ({projector.CubeGrid.GridSizeEnum.ToString()}) - VanillaBP={(projector.ProjectedGrid == null ? "(N/A)" : projector.ProjectedGrid.CustomName ?? "(Unnamed)")}; CustomBP={(spawnTaskRunning ? "(Spawning...)" : (OriginalBlueprint == null ? "(N/A)" : OriginalBlueprint.DisplayName ?? "(Unnamed)"))}");
+
+                            Log.Info($"UpdateAfterSimulation() Status: {projector.CustomName} ({projector.CubeGrid.GridSizeEnum.ToString()}) - CustomProjection={CustomProjection != null};" +
+                                $" Radius={CustomProjection?.PositionComp?.WorldVolume.Radius ?? -1};" +
+                                $" Closed={CustomProjection?.Closed.ToString() ?? "N/A"}" +
+                                $" Vis={projectionVisible}; VanillaBP={(projector.ProjectedGrid == null ? "(N/A)" : projector.ProjectedGrid.CustomName ?? "(Unnamed)")};" +
+                                $" CustomBP={(spawnTaskRunning ? "(Spawning...)" : (OriginalBlueprint == null ? "(N/A)" : OriginalBlueprint.DisplayName ?? "(Unnamed)"))}");
                         }
                     }
                 }
@@ -979,6 +984,9 @@ namespace Digi.ProjectorPreview
                                 }
                             }
                         }
+
+                        if(ProjectorPreviewMod.Debug)
+                            Log.Info($"{projector.CustomName} - set projection matrix: {matrix}\nfinal: {CustomProjection.WorldMatrix}\nradius: {CustomProjection.PositionComp.WorldVolume.Radius}");
                     }
 
                     needsSubpartRefresh = false;
@@ -1376,12 +1384,18 @@ namespace Digi.ProjectorPreview
 
             if(projectionVisible)
             {
+                if(CustomProjection != null && CustomProjection.MarkedForClose)
+                {
+                    Log.Info($"UpdateProjectionVisibility() :: {projector.CustomName} had closed custom projection, respawning...");
+                    CustomProjection = null;
+                }
+
                 if(CustomProjection == null)
                 {
                     if(!spawnTaskRunning && OriginalBlueprint != null)
                     {
                         if(ProjectorPreviewMod.Debug)
-                            Log.Info("UpdateProjectionVisibility() :: Started spawn task...");
+                            Log.Info($"UpdateProjectionVisibility() :: {projector.CustomName} - Started spawn task...");
 
                         spawnTaskRunning = true;
                         spawnTask = MyAPIGateway.Parallel.Start(SpawnThread.Run, SpawnTaskCompleted, new SpawnThread.Data(OriginalBlueprint));
@@ -1389,15 +1403,22 @@ namespace Digi.ProjectorPreview
                 }
                 else if(!CustomProjection.Render.Visible)
                 {
+                    CustomProjection.Render.SkipIfTooSmall = false;
                     CustomProjection.Render.Visible = true;
                     needsMatrixUpdate = true;
                     needsSubpartRefresh = true;
+
+                    if(ProjectorPreviewMod.Debug)
+                        Log.Info($"UpdateProjectionVisibility() :: {projector.CustomName} - set visible");
                 }
             }
             else
             {
                 if(CustomProjection != null && CustomProjection.Render.Visible)
                 {
+                    if(ProjectorPreviewMod.Debug)
+                        Log.Info($"UpdateProjectionVisibility() :: {projector.CustomName} - set invisible");
+
                     // HACK since .Render.Visible doesn't hide armor, I'm making it really tiny and placing it inside the projector
                     const float SCALE = 0.0000001f;
                     var m = projector.WorldMatrix;
@@ -1434,17 +1455,47 @@ namespace Digi.ProjectorPreview
             }
         }
 
-        private void SpawnTaskCompleted(WorkData workData)
+        void SpawnTaskCompleted(WorkData workData)
+        {
+            try
+            {
+                var data = (SpawnThread.Data)workData;
+
+                if(Log.TaskHasErrors(spawnTask, "SpawnTask"))
+                {
+                    spawnTaskRunning = false;
+                    return;
+                }
+
+                MyAPIGateway.Entities.RemapObjectBuilder(data.Blueprint);
+
+                MyCubeGrid ent = (MyCubeGrid)MyAPIGateway.Entities.CreateFromObjectBuilderParallel(data.Blueprint, false, SpawnFinished);
+                ent.IsPreview = true;
+                ent.SyncFlag = false;
+                ent.Save = false;
+                ent.Render.CastShadows = false;
+            }
+            catch(Exception e)
+            {
+                Log.Error(e);
+            }
+        }
+
+        void SpawnFinished(IMyEntity ent)
         {
             try
             {
                 spawnTaskRunning = false;
-                var data = (SpawnThread.Data)workData;
 
-                if(Log.TaskHasErrors(spawnTask, "SpawnTask"))
-                    return;
+                if(CustomProjection != null)
+                {
+                    CustomProjection.Close();
 
-                CustomProjection = data.Entity;
+                    if(ProjectorPreviewMod.Debug)
+                        Log.Info($"SpawnCompleted() :: {projector.CustomName} - forcing close on previous projection");
+                }
+
+                CustomProjection = (MyCubeGrid)ent;
 
                 if(CustomProjection == null)
                 {
@@ -1453,7 +1504,7 @@ namespace Digi.ProjectorPreview
                     return;
                 }
 
-                if(projector.Closed || data.Blueprint == null)
+                if(projector.Closed)
                 {
                     CustomProjection.Close();
                     CustomProjection = null;
@@ -1491,13 +1542,10 @@ namespace Digi.ProjectorPreview
                 MyAPIGateway.Entities.AddEntity(CustomProjection);
                 needsMatrixUpdate = true;
 
-                if(ProjectorPreviewMod.Debug)
-                    Log.Info($"CustomProjection created; name={CustomProjection.DisplayName} id={CustomProjection.EntityId.ToString()}");
-
                 SetLargestGridLength(CustomProjection);
 
                 if(ProjectorPreviewMod.Debug)
-                    Log.Info($"SpawnCompleted() :: name={CustomProjection.DisplayName}");
+                    Log.Info($"SpawnCompleted() :: CustomProjection created; name={CustomProjection.DisplayName} id={CustomProjection.EntityId.ToString()}");
             }
             catch(Exception e)
             {

@@ -32,21 +32,25 @@ namespace Digi.ProjectorPreview
 
             CleanBlueprint(bp);
 
-            MyAPIGateway.Entities.RemapObjectBuilder(bp);
+            data.Blueprint = bp;
 
-            var ent = (MyCubeGrid)MyAPIGateway.Entities.CreateFromObjectBuilder(bp);
-
-            ent.IsPreview = true;
-            ent.SyncFlag = false;
-            ent.Save = false;
-            ent.Render.CastShadows = false;
-
-            data.Entity = ent;
+            //MyAPIGateway.Entities.RemapObjectBuilder(bp);
+            //
+            //var ent = (MyCubeGrid)MyAPIGateway.Entities.CreateFromObjectBuilder(bp);
+            //
+            //ent.IsPreview = true;
+            //ent.SyncFlag = false;
+            //ent.Save = false;
+            //ent.Render.CastShadows = false;
+            //
+            //data.Entity = ent;
         }
 
         private static void CleanBlueprint(MyObjectBuilder_CubeGrid bp)
         {
+            bp.DisplayName = "ProjectorPreview-CustomProjection";
             bp.PersistentFlags = MyPersistentEntityFlags2.InScene;
+            bp.EntityId = 0;
             bp.IsStatic = true;
             bp.CreatePhysics = false;
             bp.Editable = false;
