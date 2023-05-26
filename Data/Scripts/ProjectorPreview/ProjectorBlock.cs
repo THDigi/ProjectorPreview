@@ -1306,10 +1306,6 @@ namespace Digi.ProjectorPreview
                         info.Append("More than ").Append(BLINK_MAX_BLOCKS).Append(" missing blocks,\nblinking turned off.").AppendLine();
                     }
                 }
-
-                // HACK CustomInfo doesn't update, added note for players; bugreport: SE-7777
-                info.AppendLine();
-                info.Append("NOTE: Update of this panel is buggy.\nClick the block again to update.");
             }
             catch(Exception e)
             {
@@ -1355,8 +1351,12 @@ namespace Digi.ProjectorPreview
                 UpdateProjectionVisibility();
                 UpdateStatusMode();
 
-                if(ProjectorPreviewMod.IsInProjectorTerminal)
-                    projector.RefreshCustomInfo();
+                if(ProjectorPreviewMod.IsInProjectorTerminal && MyAPIGateway.Session.GameplayFrameCounter % 6 == 0) // 10*6 = every 60 ticks
+                {
+                    projector.RefreshCustomInfo(); // calls the AppendingCustomInfo event
+
+                    projector.SetDetailedInfoDirty(); // actually refreshes the detailed info area
+                }
             }
             catch(Exception e)
             {
