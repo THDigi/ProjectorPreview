@@ -9,6 +9,7 @@ using Sandbox.Game.Entities;
 using Sandbox.Game.EntityComponents;
 using Sandbox.Game.Lights;
 using Sandbox.ModAPI;
+using Sandbox.ModAPI.Interfaces;
 using SpaceEngineers.Game.ModAPI;
 using VRage;
 using VRage.Game;
@@ -310,15 +311,17 @@ namespace Digi.ProjectorPreview
 
             projector.SetProjectedGrid(bp);
 
-            // TODO: configure projector vanilla sliders to place the projection exactly overlayed?
-#if false
             var projectorObj = bp.CubeBlocks.Find(b => b.EntityId == projector.EntityId);
+            var referenceBlock = bp.CubeBlocks[0];
 
             projector.SetValueBool("KeepProjection", true);
-            projector.ProjectionOffset = ???;
-            projector.ProjectionRotation = ???;
+
+            Vector3I projectionOffset;
+            Vector3I projectionRotation;
+            ProjectorAligner.Align(referenceBlock.Min, projectorObj.Min, projectorObj.BlockOrientation, out projectionOffset, out projectionRotation);
+            projector.ProjectionOffset = projectionOffset;
+            projector.ProjectionRotation = projectionRotation;
             projector.UpdateOffsetAndRotation();
-#endif
         }
         #endregion
 
