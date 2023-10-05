@@ -242,13 +242,15 @@ namespace Digi.ProjectorPreview
         {
             try
             {
-                var logic = block.GameLogic?.GetAs<Projector>();
+                if(ProjectorPreviewMod.Debug)
+                    Log.Info($"UI_UseThisShip_Action(); button pressed: {value}");
 
-                if(logic == null)
+                if(value <= 0)
                     return;
 
-                if(ProjectorPreviewMod.Debug)
-                    Log.Info($"UI_UseThisShip_Action(); button pressed");
+                var logic = block.GameLogic?.GetAs<Projector>();
+                if(logic == null)
+                    return;
 
                 logic.UseThisShip_Sender(value == 2);
             }
@@ -258,7 +260,7 @@ namespace Digi.ProjectorPreview
             }
         }
 
-        private void UseThisShip_Sender(bool fix)
+        void UseThisShip_Sender(bool fix)
         {
             if(useThisShipCooldown > 0)
                 return;
@@ -302,7 +304,7 @@ namespace Digi.ProjectorPreview
             {
                 bp.Skeleton?.Clear(); // remove deformation
 
-                foreach(var block in bp.CubeBlocks)
+                foreach(MyObjectBuilder_CubeBlock block in bp.CubeBlocks)
                 {
                     block.IntegrityPercent = 1f;
                     block.BuildPercent = 1f;
@@ -311,17 +313,7 @@ namespace Digi.ProjectorPreview
 
             projector.SetProjectedGrid(bp);
 
-            var projectorObj = bp.CubeBlocks.Find(b => b.EntityId == projector.EntityId);
-            var referenceBlock = bp.CubeBlocks[0];
-
-            projector.SetValueBool("KeepProjection", true);
-
-            Vector3I projectionOffset;
-            Vector3I projectionRotation;
-            ProjectorAligner.Align(referenceBlock.Min, projectorObj.Min, projectorObj.BlockOrientation, out projectionOffset, out projectionRotation);
-            projector.ProjectionOffset = projectionOffset;
-            projector.ProjectionRotation = projectionRotation;
-            projector.UpdateOffsetAndRotation();
+            AlignProjectionFromOB(bp);
         }
         #endregion
 
@@ -381,6 +373,151 @@ namespace Digi.ProjectorPreview
                 projector.SetProjectedGrid(null); // it's synchronized, no reason to do it clientside to spam server and clients with requests
 
             RefreshControls(refreshRemoveButton: true, refeshCustomInfo: true);
+        }
+        #endregion
+
+        #region Keep Projection checkbox
+        public static bool UI_KeepProjection_Enabled(IMyTerminalBlock block)
+        {
+            try
+            {
+                return GetLogic(block)?.KeepProjectionEnabled() ?? false;
+            }
+            catch(Exception e)
+            {
+                Log.Error(e);
+                return false;
+            }
+        }
+
+        bool KeepProjectionEnabled()
+        {
+            var def = (MyProjectorDefinition)projector.SlimBlock.BlockDefinition;
+            return !PreviewMode && def.AllowWelding;
+        }
+        #endregion
+
+        #region Align projection
+        public static bool UI_AlignProjection_Enabled(IMyTerminalBlock block)
+        {
+            var logic = block.GameLogic?.GetAs<Projector>();
+            return (logic == null ? false : !logic.PreviewMode && logic.projector.ProjectedGrid != null);
+        }
+
+        public static void UI_AlignProjection_Action(IMyTerminalBlock block)
+        {
+            try
+            {
+                var logic = block.GameLogic?.GetAs<Projector>();
+                if(logic == null)
+                    return;
+
+                if(ProjectorPreviewMod.Debug)
+                    Log.Info($"UI_AlignProjection_Action(); button pressed");
+
+                logic.AlignProjectionFromGrid();
+            }
+            catch(Exception e)
+            {
+                Log.Error(e);
+            }
+        }
+
+        void AlignProjectionFromOB(MyObjectBuilder_CubeGrid projectionOB)
+        {
+            MyObjectBuilder_Projector projectedProjector = null;
+            MyObjectBuilder_Projector firstProjector = null;
+
+            foreach(MyObjectBuilder_CubeBlock blockOB in projectionOB.CubeBlocks)
+            {
+                var proj = blockOB as MyObjectBuilder_Projector;
+                if(proj != null)
+                {
+                    if(firstProjector == null)
+                        firstProjector = proj;
+
+                    if((Vector3I)proj.Min == projector.Min)
+                    {
+                        projectedProjector = proj;
+                        break;
+                    }
+                }
+            }
+
+            projectedProjector = projectedProjector ?? firstProjector;
+
+            if(projectedProjector == null)
+            {
+                MyAPIGateway.Utilities.ShowMessage("ProjectorPreviewMod", "Couldn't find any projectors in the projection OB! Nothing to align to.");
+                return;
+            }
+
+            MyObjectBuilder_CubeBlock refBlock = projectionOB.CubeBlocks[0];
+            Vector3I refBlockCenter = refBlock.Min + GetBlockCenterRotated(refBlock.GetId(), refBlock.BlockOrientation);
+            Vector3I projectorCenter = projectedProjector.Min + GetBlockCenterRotated(projectedProjector.GetId(), projectedProjector.BlockOrientation);
+
+            AlignProjection(refBlockCenter, projectorCenter, projectedProjector.BlockOrientation);
+        }
+
+        void AlignProjectionFromGrid()
+        {
+            MyCubeGrid projectedGrid = projector?.ProjectedGrid as MyCubeGrid;
+            if(projectedGrid == null)
+            {
+                MyAPIGateway.Utilities.ShowMessage("ProjectorPreviewMod", "No grid is projected in build mode");
+                return;
+            }
+
+            IMyProjector projectedProjector = null;
+            IMyProjector firstProjector = null;
+
+            foreach(MyCubeBlock block in projectedGrid.GetFatBlocks())
+            {
+                var proj = block as IMyProjector;
+                if(proj != null)
+                {
+                    if(firstProjector == null)
+                        firstProjector = proj;
+
+                    if(proj.Min == projector.Min)
+                    {
+                        projectedProjector = proj;
+                        break;
+                    }
+                }
+            }
+
+            projectedProjector = projectedProjector ?? firstProjector;
+
+            if(projectedProjector == null)
+            {
+                MyAPIGateway.Utilities.ShowMessage("ProjectorPreviewMod", "Couldn't find any projectors in the projection! Nothing to align to.");
+                return;
+            }
+
+            IMySlimBlock refBlock = projectedGrid.GetBlocks().FirstElement() as IMySlimBlock;
+            Vector3I refBlockCenter = refBlock.Min + GetBlockCenterRotated(refBlock.BlockDefinition.Id, refBlock.Orientation);
+            Vector3I projectorCenter = projectedProjector.Min + GetBlockCenterRotated(projectedProjector.BlockDefinition, projectedProjector.Orientation);
+
+            AlignProjection(refBlockCenter, projectorCenter, projectedProjector.Orientation);
+        }
+
+        static Vector3I GetBlockCenterRotated(MyDefinitionId defId, MyBlockOrientation orientation)
+        {
+            return Vector3I.Transform(MyDefinitionManager.Static.GetCubeBlockDefinition(defId).Center, new MatrixI(orientation));
+        }
+
+        void AlignProjection(Vector3I refBlockCenter, Vector3I ghostProjectorCenter, MyBlockOrientation ghostProjectorOrientation)
+        {
+            // required otherwise the projection is removed immediately after alignment
+            projector.SetValueBool("KeepProjection", true);
+
+            Vector3I projectionOffset;
+            Vector3I projectionRotation;
+            ProjectorAligner.Align(refBlockCenter, ghostProjectorCenter, ghostProjectorOrientation, out projectionOffset, out projectionRotation);
+            projector.ProjectionOffset = projectionOffset;
+            projector.ProjectionRotation = projectionRotation;
+            projector.UpdateOffsetAndRotation();
         }
         #endregion
 
@@ -448,11 +585,11 @@ namespace Digi.ProjectorPreview
             if(logic.CustomProjection != null)
             {
                 var ratio = logic.LargestGridLength / logic.Scale;
-                writer.Append(logic.Scale.ToString("0.00")).Append("m (1:").Append(ratio.ToString("0.000"));
+                writer.Append(logic.Scale.ToString("0.##")).Append("m / 1:").Append(ratio.ToString("0.###"));
             }
             else
             {
-                writer.Append(logic.Scale.ToString("0.00")).Append('m');
+                writer.Append(logic.Scale.ToString("0.##")).Append('m');
             }
         }
         #endregion
