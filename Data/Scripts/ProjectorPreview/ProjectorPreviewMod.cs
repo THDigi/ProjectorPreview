@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 using Sandbox.Common.ObjectBuilders;
+using Sandbox.Definitions;
 using Sandbox.ModAPI;
 using Sandbox.ModAPI.Interfaces.Terminal;
 using VRage.Game;
@@ -38,6 +39,8 @@ namespace Digi.ProjectorPreview
         public IMyTerminalControl ControlProjectorMode = null;
         public IMyTerminalControl ControlUseThisShip = null;
         public IMyTerminalControl ControlRemoveButton = null;
+        public IMyTerminalControl ControlAlignProjector = null;
+        public IMyTerminalAction ActionAlignProjector = null;
         public readonly IMyTerminalControl[] ControlRotate = new IMyTerminalControl[3];
         public readonly List<IMyTerminalControl> RefreshControls = new List<IMyTerminalControl>(); // controls to be refreshed on certain actions
         private readonly HashSet<IMyTerminalControl> ControlsAfterEverything = new HashSet<IMyTerminalControl>();
@@ -316,7 +319,7 @@ namespace Digi.ProjectorPreview
                 for(int i = 0; i < controls.Count; ++i)
                 {
                     var c = controls[i];
-                    if(c == ControlUseThisShip || ControlsAfterEverything.Contains(c) || ControlsAfterRemoveButton.Contains(c))
+                    if(c == ControlUseThisShip || c == ControlAlignProjector || ControlsAfterEverything.Contains(c) || ControlsAfterRemoveButton.Contains(c))
                         continue; // skips controls that we're gonna add later
 
                     if(c == ControlRemoveButton)
@@ -333,6 +336,11 @@ namespace Digi.ProjectorPreview
                     else
                     {
                         ReorderedControls.Add(c);
+
+                        if(c.Id == "ShowOnlyBuildable")
+                        {
+                            ReorderedControls.Add(ControlAlignProjector);
+                        }
                     }
                 }
 
@@ -401,6 +409,13 @@ namespace Digi.ProjectorPreview
                     // edit the action to remove both the vanilla projection and the custom projection
                     button.Action = Projector.UI_RemoveButton_Action;
                 }
+
+                // change gray-out condition for "Keep Projection" as it is awkward to use if off and you try to load a blueprint that perfectly matches the ship and it's already aligned.
+                if(vc.Id == "KeepProjection")
+                {
+                    var checkbox = (IMyTerminalControlCheckbox)vc;
+                    checkbox.Enabled = Projector.UI_KeepProjection_Enabled;
+                }
             }
             #endregion
 
@@ -408,7 +423,10 @@ namespace Digi.ProjectorPreview
                 var c = tc.CreateControl<IMyTerminalControlCombobox, IMyProjector>(CONTROL_PREFIX + "UseThisShip");
                 c.SupportsMultipleBlocks = false;
                 c.Title = MyStringId.GetOrCompute("Load this ship...");
-                c.Tooltip = MyStringId.GetOrCompute("Use the current ship as the blueprint for this projector.\nThis copies the ship in its current state or with all current blocks fixed/built, it does not automatically update it as it changes.\n\n(Added by Projector Preview mod)");
+                c.Tooltip = MyStringId.GetOrCompute("Use the current ship as the blueprint for this projector." +
+                    "\nThis copies the ship in its current state or with all current blocks fixed/built, it does not automatically update it as it changes." +
+                    "\nIt also automatically aligns it for Build Mode." +
+                    "\n\n(Added by Projector Preview mod)");
                 c.Enabled = (b) => b.IsWorking;
                 c.Setter = Projector.UI_UseThisShip_Action;
                 c.Getter = (b) => 0;
@@ -417,7 +435,7 @@ namespace Digi.ProjectorPreview
                 CreateAction<IMyProjector>(c,
                     icon: MyAPIGateway.Utilities.GamePaths.ContentPath + @"\Textures\GUI\Icons\Actions\Start.dds",
                     itemIds: new string[] { null, "UseShip", "UseShipBuilt" },
-                    itemNames: new string[] { null, "(Preview) Load this ship - as is", "(Preview) Load this ship - built&fixed" });
+                    itemNames: new string[] { null, "(Preview) Load this ship - as is", "(Preview) Load this ship - built & fixed" });
 
                 ControlUseThisShip = c;
                 // this one gets added manually before remove button
@@ -462,6 +480,36 @@ namespace Digi.ProjectorPreview
                 ControlsAfterRemoveButton.Add(c);
 
                 // don't AddControl() because it'll be confusing if sorting doesn't work
+            }
+
+            {
+                var c = tc.CreateControl<IMyTerminalControlButton, IMyProjector>(CONTROL_PREFIX + "AlignProjection");
+                c.SupportsMultipleBlocks = true;
+                c.Title = MyStringId.GetOrCompute("Align Projection");
+                c.Tooltip = MyStringId.GetOrCompute("Finds the projector block in the projector and attempts to align it to the real projector." +
+                                                    "\nThis is also automatically executed when loading current ship as a projection." +
+                                                    "\n\n(Added by Projector Preview mod)");
+                c.Enabled = Projector.UI_AlignProjection_Enabled;
+                c.Action = Projector.UI_AlignProjection_Action;
+
+                tc.AddControl<IMyProjector>(c);
+                RefreshControls.Add(c);
+                ControlAlignProjector = c;
+
+                {
+                    var a = MyAPIGateway.TerminalControls.CreateAction<IMyProjector>(CONTROL_PREFIX + "AlignProjection");
+                    a.Name = new StringBuilder("Align Projection");
+                    a.Icon = @"Textures\GUI\Icons\HUD 2017\BlueprintsScreen.png";
+                    a.ValidForGroups = true;
+                    a.Action = Projector.UI_AlignProjection_Action;
+                    a.Writer = (b, sb) =>
+                    {
+                        sb.Append(Projector.UI_AlignProjection_Enabled(b) ? "Ready" : "Invalid\nState");
+                    };
+
+                    ActionAlignProjector = a;
+                    MyAPIGateway.TerminalControls.AddAction<IMyProjector>(a);
+                }
             }
 
             // rest of vanilla controls would fit here

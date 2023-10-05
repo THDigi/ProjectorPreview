@@ -133,6 +133,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="BlueprintThread.cs" />
+    <Compile Include="ProjectorAligner.cs" />
     <Compile Include="SerializationClasses.cs" />
     <Compile Include="ProjectorBlock.cs" />
     <Compile Include="SpawnThread.cs" />
