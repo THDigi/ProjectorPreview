@@ -453,8 +453,8 @@ namespace Digi.ProjectorPreview
             }
 
             MyObjectBuilder_CubeBlock refBlock = projectionOB.CubeBlocks[0];
-            Vector3I refBlockCenter = refBlock.Min + GetBlockCenterRotated(refBlock.GetId(), refBlock.BlockOrientation);
-            Vector3I projectorCenter = projectedProjector.Min + GetBlockCenterRotated(projectedProjector.GetId(), projectedProjector.BlockOrientation);
+            Vector3I refBlockCenter = CalculateBlockCenterInOB(refBlock);
+            Vector3I projectorCenter = CalculateBlockCenterInOB(projectedProjector);
 
             AlignProjection(refBlockCenter, projectorCenter, projectedProjector.BlockOrientation);
         }
@@ -495,16 +495,117 @@ namespace Digi.ProjectorPreview
                 return;
             }
 
-            IMySlimBlock refBlock = projectedGrid.GetBlocks().FirstElement() as IMySlimBlock;
-            Vector3I refBlockCenter = refBlock.Min + GetBlockCenterRotated(refBlock.BlockDefinition.Id, refBlock.Orientation);
-            Vector3I projectorCenter = projectedProjector.Min + GetBlockCenterRotated(projectedProjector.BlockDefinition, projectedProjector.Orientation);
+            IMySlimBlock refBlock = projectedGrid.GetBlocks().FirstElement();
+            Vector3I refBlockCenter = CalculateBlockCenterInGrid(refBlock);
+            Vector3I projectorCenter = CalculateBlockCenterInGrid(projectedProjector);
 
-            AlignProjection(refBlockCenter, projectorCenter, projectedProjector.Orientation);
+            AlignProjection(refBlockCenter, projectorCenter, projectedProjector.Orientation); // TODO: test if works...
         }
 
-        static Vector3I GetBlockCenterRotated(MyDefinitionId defId, MyBlockOrientation orientation)
+        static Vector3I CalculateBlockCenterInOB(MyObjectBuilder_CubeBlock block)
         {
-            return Vector3I.Transform(MyDefinitionManager.Static.GetCubeBlockDefinition(defId).Center, new MatrixI(orientation));
+            Vector3I blockMin = block.Min;
+            MyBlockOrientation blockOrientation = block.BlockOrientation;
+            MyCubeBlockDefinition blockDefinition = MyDefinitionManager.Static.GetCubeBlockDefinition(block.GetId());
+
+            MatrixI rotation = new MatrixI(block.BlockOrientation);
+            MatrixI rotationInv;
+            MatrixI.Invert(ref rotation, out rotationInv);
+
+            Vector3I oneCornerPreRotation = Vector3I.Transform(blockMin, rotationInv);
+
+            Vector3I deltaX = new Vector3I(blockDefinition.Size.X - 1, 0, 0);
+            Vector3I deltaY = new Vector3I(0, blockDefinition.Size.Y - 1, 0);
+            Vector3I deltaZ = new Vector3I(0, 0, blockDefinition.Size.Z - 1);
+
+            Vector3I[] possibleOppositeCorner =
+            {
+                oneCornerPreRotation + deltaX + deltaY + deltaZ,
+                oneCornerPreRotation + deltaX + deltaY - deltaZ,
+                oneCornerPreRotation + deltaX - deltaY + deltaZ,
+                oneCornerPreRotation + deltaX - deltaY - deltaZ,
+                oneCornerPreRotation - deltaX + deltaY + deltaZ,
+                oneCornerPreRotation - deltaX + deltaY - deltaZ,
+                oneCornerPreRotation - deltaX - deltaY + deltaZ,
+                oneCornerPreRotation - deltaX - deltaY - deltaZ,
+            };
+
+            for (int i = 0; i < possibleOppositeCorner.Length; i++)
+            {
+                possibleOppositeCorner[i] = Vector3I.Transform(possibleOppositeCorner[i], rotation);
+            }
+
+            // the only valid opposite corner to Min is the Max
+            int maxX = int.MinValue;
+            int maxY = int.MinValue;
+            int maxZ = int.MinValue;
+            for (int i = 0; i < possibleOppositeCorner.Length; i++)
+            {
+                maxX = Math.Max(maxX, possibleOppositeCorner[i].X);
+                maxY = Math.Max(maxY, possibleOppositeCorner[i].Y);
+                maxZ = Math.Max(maxZ, possibleOppositeCorner[i].Z);
+            }
+
+            Vector3I maxCornerAfterRotation = new Vector3I(maxX, maxY, maxZ);
+
+            return CalculateBlockCenter(blockMin, maxCornerAfterRotation, blockOrientation, blockDefinition);
+        }
+
+        static Vector3I CalculateBlockCenterInGrid(IMySlimBlock block)
+        {
+            var definition = MyDefinitionManager.Static.GetCubeBlockDefinition(block.BlockDefinition.Id);
+            return CalculateBlockCenter(block.Min, block.Max, block.Orientation, definition);
+        }
+
+        static Vector3I CalculateBlockCenterInGrid(IMyCubeBlock block)
+        {
+            var definition = MyDefinitionManager.Static.GetCubeBlockDefinition(block.BlockDefinition);
+            return CalculateBlockCenter(block.Min, block.Max, block.Orientation, definition);
+        }
+
+        static Vector3I CalculateBlockCenter(Vector3I blockMin, Vector3I blockMax, MyBlockOrientation blockOrientation, MyCubeBlockDefinition blockDefinition)
+        {
+            Vector3I minToMax = blockMax - blockMin;
+            Vector3I deltaX = minToMax * Vector3I.Right;
+            Vector3I deltaY = minToMax * Vector3I.Up;
+            Vector3I deltaZ = minToMax * Vector3I.Backward;
+            Vector3I[] corners =
+            {
+                blockMin,
+                blockMin + deltaX,
+                blockMin + deltaY,
+                blockMin + deltaZ,
+                blockMax,
+                blockMax - deltaX,
+                blockMax - deltaY,
+                blockMax - deltaZ
+            };
+
+            // transform each corner with the reverse transformation to obtain Min from before rotation
+            var rotation = new MatrixI(blockOrientation);
+            MatrixI rotationInv;
+            MatrixI.Invert(ref rotation, out rotationInv);
+            for (int i = 0; i < corners.Length; i++)
+            {
+                corners[i] = Vector3I.Transform(corners[i], rotationInv);
+            }
+
+            // find the new Min, the original Min that center from definition is offset to
+            int minX = int.MaxValue;
+            int minY = int.MaxValue;
+            int minZ = int.MaxValue;
+            for (int i = 0; i < corners.Length; i++)
+            {
+                minX = Math.Min(minX, corners[i].X);
+                minY = Math.Min(minY, corners[i].Y);
+                minZ = Math.Min(minZ, corners[i].Z);
+            }
+
+            Vector3I originalMin = new Vector3I(minX, minY, minZ);
+            Vector3I originalCenter = originalMin + blockDefinition.Center;
+
+            // transform forward to get center in grid coordinates after block was rotated
+            return Vector3I.Transform(originalCenter, rotation);
         }
 
         void AlignProjection(Vector3I refBlockCenter, Vector3I ghostProjectorCenter, MyBlockOrientation ghostProjectorOrientation)
