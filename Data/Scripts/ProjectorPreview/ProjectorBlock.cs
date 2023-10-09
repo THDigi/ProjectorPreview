@@ -499,7 +499,7 @@ namespace Digi.ProjectorPreview
             Vector3I refBlockCenter = CalculateBlockCenterInGrid(refBlock);
             Vector3I projectorCenter = CalculateBlockCenterInGrid(projectedProjector);
 
-            AlignProjection(refBlockCenter, projectorCenter, projectedProjector.Orientation); // TODO: test if works...
+            AlignProjection(refBlockCenter, projectorCenter, projectedProjector.Orientation);
         }
 
         static Vector3I CalculateBlockCenterInOB(MyObjectBuilder_CubeBlock block)
