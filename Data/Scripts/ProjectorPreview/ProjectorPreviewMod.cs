@@ -435,7 +435,7 @@ namespace Digi.ProjectorPreview
                 CreateAction<IMyProjector>(c,
                     icon: MyAPIGateway.Utilities.GamePaths.ContentPath + @"\Textures\GUI\Icons\Actions\Start.dds",
                     itemIds: new string[] { null, "UseShip", "UseShipBuilt" },
-                    itemNames: new string[] { null, "(Preview) Load this ship - as is", "(Preview) Load this ship - built & fixed" });
+                    itemNames: new string[] { null, "Load this ship - as is", "Load this ship - built & fixed" });
 
                 ControlUseThisShip = c;
                 // this one gets added manually before remove button
