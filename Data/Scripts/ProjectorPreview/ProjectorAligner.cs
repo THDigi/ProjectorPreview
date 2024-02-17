@@ -45,13 +45,13 @@ namespace Digi.ProjectorPreview
         /// </summary>
         /// <param name="firstBlockCenter">center of the first block</param>
         /// <param name="projectorCenter">center of the projected projector</param>
-        /// <param name="orojectorOrientation">orientation of the projected projector</param>
+        /// <param name="projectorOrientation">orientation of the projected projector</param>
         /// <param name="projectionOffset">calculated offset</param>
         /// <param name="projectionRotation">calculated rotation</param>
-        public static void Align(Vector3I firstBlockCenter, Vector3I projectorCenter, MyBlockOrientation orojectorOrientation,
+        public static void Align(Vector3I firstBlockCenter, Vector3I projectorCenter, MyBlockOrientation projectorOrientation,
             out Vector3I projectionOffset, out Vector3I projectionRotation)
         {
-            Vector3I targetRotate = RotationLookup[orojectorOrientation];
+            Vector3I targetRotate = RotationLookup[projectorOrientation];
             Vector3I offsetVector = -firstBlockCenter + projectorCenter;
 
             Vector3 r = targetRotate * MathHelper.ToRadians(90f);
