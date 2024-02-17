@@ -3,10 +3,12 @@ using System.Collections.Generic;
 using System.Text;
 using Sandbox.Common.ObjectBuilders;
 using Sandbox.Definitions;
+using Sandbox.Game.Entities;
 using Sandbox.ModAPI;
 using Sandbox.ModAPI.Interfaces.Terminal;
 using VRage.Game;
 using VRage.Game.Components;
+using VRage.Game.Entity;
 using VRage.Game.ModAPI;
 using VRage.ModAPI;
 using VRage.ObjectBuilders;
@@ -18,6 +20,8 @@ using VRageMath;
 
 // TODO block place/remove sync between real grid and projected grid
 // ^^^ needs sync of block stages, paint, and many other things...
+
+// TODO: show missing blocks in vanilla projection - something like if <= 5% blocks (minimum 1 block) remaining then show them on UI somehow
 
 namespace Digi.ProjectorPreview
 {
@@ -81,23 +85,29 @@ namespace Digi.ProjectorPreview
         public readonly Vector3 STATUS_COLOR_WRONG_ROTATION = new Color(0, 155, 255).ColorToHSVDX11();
         public readonly MyStringId MATERIAL_SQUARE = MyStringId.GetOrCompute("Square");
 
+        public const string ProjectedGridDisplayName = "ProjectorPreview-CustomProjection";
+
         public override void LoadData()
         {
             Instance = this;
             Log.ModName = "Projector Preview";
 
-            Log.Info("Mod version: 3"); // HACK: for easy check if the correct mod version is installed, increment on updates
+            Log.Info("Mod version: 4"); // HACK: for easy check if the correct mod version is installed, increment on updates
 
             DebugEnabled = MyAPIGateway.Utilities.FileExistsInLocalStorage("debug", typeof(ProjectorPreviewMod));
 
             if(Debug)
                 Log.Info("Debug logging enabled.");
+
+            IsPlayer = !(MyAPIGateway.Session.IsServer && MyAPIGateway.Utilities.IsDedicated);
+
+            if(IsPlayer)
+                MyEntities.OnEntityCreate += EntityCreated;
         }
 
         public override void BeforeStart()
         {
             IsInitialized = true;
-            IsPlayer = !(MyAPIGateway.Session.IsServer && MyAPIGateway.Utilities.IsDedicated);
 
             UpdateConfigValues();
 
@@ -116,6 +126,8 @@ namespace Digi.ProjectorPreview
 
             try
             {
+                MyEntities.OnEntityCreate -= EntityCreated;
+
                 if(IsInitialized)
                 {
                     IsInitialized = false;
@@ -124,6 +136,28 @@ namespace Digi.ProjectorPreview
 
                     MyAPIGateway.Multiplayer.UnregisterMessageHandler(PACKET_ID, PacketReceived);
                     MyAPIGateway.TerminalControls.CustomControlGetter -= CustomControlGetter;
+                }
+            }
+            catch(Exception e)
+            {
+                Log.Error(e);
+            }
+        }
+
+        void EntityCreated(MyEntity ent)
+        {
+            try
+            {
+                var block = ent as MyCubeBlock;
+                if(block != null)
+                {
+                    if(block.CubeGrid.DisplayName == ProjectedGridDisplayName)
+                    {
+                        // turn off updates ASAP
+                        block.IsPreview = true;
+                        block.NeedsUpdate = MyEntityUpdateEnum.NONE;
+                    }
+                    return;
                 }
             }
             catch(Exception e)

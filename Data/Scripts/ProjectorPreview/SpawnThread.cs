@@ -48,7 +48,7 @@ namespace Digi.ProjectorPreview
 
         private static void CleanBlueprint(MyObjectBuilder_CubeGrid bp)
         {
-            bp.DisplayName = "ProjectorPreview-CustomProjection";
+            bp.DisplayName = ProjectorPreviewMod.ProjectedGridDisplayName;
             bp.PersistentFlags = MyPersistentEntityFlags2.InScene;
             bp.EntityId = 0;
             bp.IsStatic = true;

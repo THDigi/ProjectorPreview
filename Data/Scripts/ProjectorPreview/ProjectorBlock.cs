@@ -1120,7 +1120,9 @@ namespace Digi.ProjectorPreview
                             {
                                 if(block.Subparts.Count > 0)
                                 {
-                                    RecursivelyFixSubparts(block);
+                                    // HACK: gatling barrel is being a PITA, sticking around floating and also refusing to be hidden
+                                    bool hideBarrel = (block is IMyLargeGatlingTurret || block is IMySmallGatlingGun);
+                                    RecursivelyFixSubparts(block, hideBarrel);
                                 }
                             }
                         }
@@ -1189,24 +1191,6 @@ namespace Digi.ProjectorPreview
                     OriginalBlueprint = null;
                 }
                 #endregion
-            }
-        }
-
-        void RecursivelyFixSubparts(MyEntity ent)
-        {
-            // TODO maybe something faster?
-            ent.Render.RemoveRenderObjects();
-            ent.Render.AddRenderObjects();
-            //ent.Render.UpdateRenderObjectLocal(ent.PositionComp.LocalMatrixRef);
-            //ent.Render.UpdateTransparency();
-            //ent.Render.UpdateRenderObject(projectionVisible);
-
-            if(ent.Subparts != null && ent.Subparts.Count > 0)
-            {
-                foreach(var subpart in ent.Subparts.Values)
-                {
-                    RecursivelyFixSubparts(subpart);
-                }
             }
         }
 
@@ -1566,6 +1550,7 @@ namespace Digi.ProjectorPreview
                     CustomProjection.WorldMatrix = m;
                     CustomProjection.PositionComp.Scale = SCALE;
                     CustomProjection.Render.SkipIfTooSmall = true;
+
                     CustomProjection.Render.Visible = false; // must be after the resize or it won't actually resize
 
                     needsMatrixUpdate = true;
@@ -1614,6 +1599,7 @@ namespace Digi.ProjectorPreview
                 ent.SyncFlag = false;
                 ent.Save = false;
                 ent.Render.CastShadows = false;
+                ent.NeedsUpdate = MyEntityUpdateEnum.NONE;
             }
             catch(Exception e)
             {
@@ -1651,6 +1637,8 @@ namespace Digi.ProjectorPreview
                     return;
                 }
 
+                CustomProjection.NeedsUpdate = MyEntityUpdateEnum.NONE;
+
                 if(originalColors == null)
                     originalColors = new Dictionary<Vector3I, MyTuple<IMySlimBlock, Vector3>>(Vector3I.Comparer);
                 else
@@ -1662,14 +1650,11 @@ namespace Digi.ProjectorPreview
 
                     SetTransparencyAndColor(projectedSlim);
 
-                    var block = projectedSlim.FatBlock as MyCubeBlock;
-
+                    MyCubeBlock block = projectedSlim.FatBlock as MyCubeBlock;
                     if(block != null)
                     {
-                        // HACK gatling gun barrels remain in their original spawn position if gamelogic is turned off...
-                        if(!(block is IMyLargeGatlingTurret))
-                            block.NeedsUpdate = MyEntityUpdateEnum.NONE;
-
+                        block.IsPreview = true;
+                        block.NeedsUpdate = MyEntityUpdateEnum.NONE;
                         block.StopDamageEffect(); // HACK because projected blocks still have damage effects for some reason
 
                         if(block.UseObjectsComponent.DetectorPhysics != null && block.UseObjectsComponent.DetectorPhysics.Enabled)
@@ -1677,12 +1662,15 @@ namespace Digi.ProjectorPreview
                     }
                 }
 
-                CustomProjection.NeedsUpdate = MyEntityUpdateEnum.NONE;
-
                 MyAPIGateway.Entities.AddEntity(CustomProjection);
                 needsMatrixUpdate = true;
 
                 SetLargestGridLength(CustomProjection);
+
+                // HACK: force re-visible so that subparts properly show up
+                CustomProjection.Render.Visible = false;
+                CustomProjection.Render.Visible = true;
+                needsSubpartRefresh = true;
 
                 if(ProjectorPreviewMod.Debug)
                     Log.Info($"SpawnCompleted() :: CustomProjection created; name={CustomProjection.DisplayName} id={CustomProjection.EntityId.ToString()}");
@@ -2001,13 +1989,38 @@ namespace Digi.ProjectorPreview
             // and probably more...
 
             var subparts = ent.Subparts;
-
             if(subparts == null)
                 return;
 
             foreach(var subpart in subparts.Values)
             {
                 SetTransparencyForSubparts(subpart, transparency);
+            }
+        }
+
+        void RecursivelyFixSubparts(MyEntity ent, bool hideBarrel)
+        {
+            if(ent.Parent == null)
+            {
+                //ent.Render.Visible = false;
+                ent.Close();
+            }
+
+            if(ent.Subparts != null && ent.Subparts.Count > 0)
+            {
+                foreach(var subpart in ent.Subparts.Values)
+                {
+                    if(hideBarrel && subpart.Parent?.Parent?.Parent is IMyCubeBlock)
+                    {
+                        //subpart.Render.Transparency = 1f;
+                        //subpart.Render.Visible = false;
+                        // refuses to be hidden and this is the only thing that works
+                        subpart.Close();
+                        break;
+                    }
+
+                    RecursivelyFixSubparts(subpart, hideBarrel);
+                }
             }
         }
 
