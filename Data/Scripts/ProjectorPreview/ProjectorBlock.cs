@@ -82,7 +82,7 @@ namespace Digi.ProjectorPreview
         private const float PROJECTION_RANGE_SCALE_SQ = 50 * 50; // squared range at which projection vanishes. this value is multiplied by the projection scale squared.
         private const byte COOLDOWN_PREVIEW = 30; // cooldown after toggling preview mode, in ticks
         private const byte COOLDOWN_USETHISSHIP = 60 * 3; // cooldown after pressing the "Use this ship" button, in ticks
-        private const byte SETTINGS_SAVE_COUNTDOWN = 60 * 3; // ticks to wait before saving or synchronizing settings after a setting was touched
+        private const byte SETTINGS_SAVE_COUNTDOWN = 30; // ticks to wait before saving or synchronizing settings after a setting was touched
         private const int RECEIVE_TIMEOUT = 60 * 30; // max amount of time to wait for players to respond to receiving the blueprint before setting it to null.
         private const int BLOCKS_PER_UPDATE = 10000; // how many blocks to update color/transparency to in an update
         private const byte BLINK_FREQUENCY = 60; // ticks to wait between blink changes from on to off or vice versa
@@ -984,35 +984,30 @@ namespace Digi.ProjectorPreview
                     Initialize();
                 }
 
-                #region Control refresh countdowns and blink ticker, only for players
-                if(ProjectorPreviewMod.Instance.IsPlayer)
+                if(previewCooldown > 0 && --previewCooldown <= 0)
                 {
-                    if(previewCooldown > 0 && --previewCooldown <= 0)
-                    {
-                        if(ProjectorPreviewMod.IsInProjectorTerminal)
-                            ProjectorPreviewMod.Instance?.ControlProjectorMode?.UpdateVisual();
-                    }
+                    if(ProjectorPreviewMod.IsInProjectorTerminal)
+                        ProjectorPreviewMod.Instance?.ControlProjectorMode?.UpdateVisual();
+                }
 
-                    if(useThisShipCooldown > 0 && --useThisShipCooldown <= 0)
-                    {
-                        if(ProjectorPreviewMod.IsInProjectorTerminal)
-                            ProjectorPreviewMod.Instance?.ControlUseThisShip?.UpdateVisual();
-                    }
+                if(useThisShipCooldown > 0 && --useThisShipCooldown <= 0)
+                {
+                    if(ProjectorPreviewMod.IsInProjectorTerminal)
+                        ProjectorPreviewMod.Instance?.ControlUseThisShip?.UpdateVisual();
+                }
 
-                    if(Settings.Status)
+                if(ProjectorPreviewMod.Instance.IsPlayer && Settings.Status)
+                {
+                    if(blocksMissing > BLINK_MAX_BLOCKS)
                     {
-                        if(blocksMissing > BLINK_MAX_BLOCKS)
-                        {
-                            blinkMemory = false;
-                        }
-                        else if(++blinkTicker >= BLINK_FREQUENCY)
-                        {
-                            blinkTicker = 0;
-                            blinkMemory = !blinkMemory;
-                        }
+                        blinkMemory = false;
+                    }
+                    else if(++blinkTicker >= BLINK_FREQUENCY)
+                    {
+                        blinkTicker = 0;
+                        blinkMemory = !blinkMemory;
                     }
                 }
-                #endregion
 
                 #region Countdown to sync or save settings
                 if(saveCountdown > 0 && --saveCountdown <= 0)
