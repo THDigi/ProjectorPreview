@@ -29,10 +29,9 @@ namespace Digi.ProjectorPreview
     public class ProjectorPreviewMod : MySessionComponentBase
     {
         public static ProjectorPreviewMod Instance = null;
-        public static bool IsInProjectorTerminal => Instance.ViewingTerminalOf != null;
-        public static bool Debug => Instance.DebugEnabled;
+        public static bool IsInProjectorTerminal { get; private set; }
+        public static bool Debug { get; private set; }
 
-        public bool DebugEnabled = false;
         public bool IsInitialized = false;
         public bool IsPlayer = false;
         public float Transparency;
@@ -92,10 +91,9 @@ namespace Digi.ProjectorPreview
             Instance = this;
             Log.ModName = "Projector Preview";
 
-            Log.Info("Mod version: 4"); // HACK: for easy check if the correct mod version is installed, increment on updates
+            Log.Info("Mod version: 5"); // HACK: for easy check if the correct mod version is installed, increment on updates
 
-            DebugEnabled = MyAPIGateway.Utilities.FileExistsInLocalStorage("debug", typeof(ProjectorPreviewMod));
-
+            Debug = MyAPIGateway.Utilities.FileExistsInLocalStorage("debug", typeof(ProjectorPreviewMod));
             if(Debug)
                 Log.Info("Debug logging enabled.");
 
@@ -338,7 +336,9 @@ namespace Digi.ProjectorPreview
             try
             {
                 ViewingTerminalOf = block as IMyProjector;
-                if(ViewingTerminalOf == null)
+                IsInProjectorTerminal = ViewingTerminalOf != null;
+
+                if(!IsInProjectorTerminal)
                     return;
 
                 ViewingTerminalOf.RefreshCustomInfo();

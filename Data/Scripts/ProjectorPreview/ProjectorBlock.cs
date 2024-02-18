@@ -530,7 +530,7 @@ namespace Digi.ProjectorPreview
                 oneCornerPreRotation - deltaX - deltaY - deltaZ,
             };
 
-            for (int i = 0; i < possibleOppositeCorner.Length; i++)
+            for(int i = 0; i < possibleOppositeCorner.Length; i++)
             {
                 possibleOppositeCorner[i] = Vector3I.Transform(possibleOppositeCorner[i], rotation);
             }
@@ -539,7 +539,7 @@ namespace Digi.ProjectorPreview
             int maxX = int.MinValue;
             int maxY = int.MinValue;
             int maxZ = int.MinValue;
-            for (int i = 0; i < possibleOppositeCorner.Length; i++)
+            for(int i = 0; i < possibleOppositeCorner.Length; i++)
             {
                 maxX = Math.Max(maxX, possibleOppositeCorner[i].X);
                 maxY = Math.Max(maxY, possibleOppositeCorner[i].Y);
@@ -585,7 +585,7 @@ namespace Digi.ProjectorPreview
             var rotation = new MatrixI(blockOrientation);
             MatrixI rotationInv;
             MatrixI.Invert(ref rotation, out rotationInv);
-            for (int i = 0; i < corners.Length; i++)
+            for(int i = 0; i < corners.Length; i++)
             {
                 corners[i] = Vector3I.Transform(corners[i], rotationInv);
             }
@@ -594,7 +594,7 @@ namespace Digi.ProjectorPreview
             int minX = int.MaxValue;
             int minY = int.MaxValue;
             int minZ = int.MaxValue;
-            for (int i = 0; i < corners.Length; i++)
+            for(int i = 0; i < corners.Length; i++)
             {
                 minX = Math.Min(minX, corners[i].X);
                 minY = Math.Min(minY, corners[i].Y);
