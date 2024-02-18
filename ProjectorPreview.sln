@@ -6,13 +6,13 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProjectorPreview", "Project
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
-		Debug|Any CPU = Debug|Any CPU
-		Release|Any CPU = Release|Any CPU
+		Debug|x64 = Debug|x64
+		Release|x64 = Release|x64
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{312A7D46-0542-4624-BB19-D7B9206051C7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{312A7D46-0542-4624-BB19-D7B9206051C7}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{312A7D46-0542-4624-BB19-D7B9206051C7}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{312A7D46-0542-4624-BB19-D7B9206051C7}.Release|Any CPU.Build.0 = Release|Any CPU
+		{312A7D46-0542-4624-BB19-D7B9206051C7}.Debug|x64.ActiveCfg = Debug|x64
+		{312A7D46-0542-4624-BB19-D7B9206051C7}.Debug|x64.Build.0 = Debug|x64
+		{312A7D46-0542-4624-BB19-D7B9206051C7}.Release|x64.ActiveCfg = Release|x64
+		{312A7D46-0542-4624-BB19-D7B9206051C7}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 EndGlobal
