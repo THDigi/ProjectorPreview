@@ -81,7 +81,7 @@ namespace Digi.ProjectorPreview
         public readonly Vector3 STATUS_COLOR_MISSING = new Color(255, 0, 0).ColorToHSVDX11();
         public readonly Vector3 STATUS_COLOR_WRONG_TYPE = new Color(255, 0, 255).ColorToHSVDX11();
         public readonly Vector3 STATUS_COLOR_WRONG_COLOR = new Color(55, 0, 155).ColorToHSVDX11();
-        public readonly Vector3 STATUS_COLOR_WRONG_ROTATION = new Color(0, 155, 255).ColorToHSVDX11();
+        public readonly Vector3 STATUS_COLOR_WRONG_ROTATION = new Color(0, 180, 200).ColorToHSVDX11();
         public readonly MyStringId MATERIAL_SQUARE = MyStringId.GetOrCompute("Square");
 
         public const string ProjectedGridDisplayName = "ProjectorPreview-CustomProjection";
@@ -590,15 +590,16 @@ namespace Digi.ProjectorPreview
                 var c = tc.CreateControl<IMyTerminalControlCheckbox, IMyProjector>(CONTROL_PREFIX + "StatusMode");
                 c.SupportsMultipleBlocks = true;
                 c.Title = MyStringId.GetOrCompute("Status mode");
-                c.Tooltip = MyStringId.GetOrCompute("Colors the projection depending on the status of the projector ship's blocks." +
+                c.Tooltip = MyStringId.GetOrCompute("Colors the projected blocks depending on the status compared to the real block." +
                                                     "\n" +
-                                                    "\nBlack = matches the blueprint." +
-                                                    "\nYellow-Orange = integrity above red line but not full health." +
-                                                    "\nOrange-Red = integrity below red line and going towards being completely destroyed." +
-                                                    "\nRed blinking = missing from ship." +
-                                                    "\nTeal = orientation/position is wrong (only shows up in build stage)." +
-                                                    "\nDark purple = color is different." +
-                                                    "\nLight purple = type is different.");
+                                                    "\nBlack = matches the blueprint" +
+                                                    "\nYellow-Orange = integrity above red line but not full health" +
+                                                    "\nOrange-Red = integrity below red line and going towards being completely destroyed" +
+                                                    "\nRed blinking = missing from ship" +
+                                                    "\nTeal = orientation/position is wrong (only shows up in build stage)" +
+                                                    "\nDark purple = color is different" +
+                                                    "\nLight purple = type is different" +
+                                                    "\nGreen = blueprint has lower built percent");
                 c.Enabled = Projector.UI_Generic_Enabled;
                 c.Getter = Projector.UI_Status_Getter;
                 c.Setter = Projector.UI_Status_Setter;

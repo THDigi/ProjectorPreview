@@ -58,7 +58,7 @@ namespace Digi.ProjectorPreview
         private int blocksWrongType = 0;
         private int blocksWrongColor = 0;
         private int blocksWrongRotation = 0;
-        private int blocksBetterIntegrity = 0;
+        private int blocksHigherBuilt = 0;
         private byte blinkTicker = 0;
         private bool blinkMemory = false;
         private Dictionary<Vector3I, MyTuple<IMySlimBlock, Vector3>> originalColors = null;
@@ -85,7 +85,7 @@ namespace Digi.ProjectorPreview
         private const byte SETTINGS_SAVE_COUNTDOWN = 30; // ticks to wait before saving or synchronizing settings after a setting was touched
         private const int RECEIVE_TIMEOUT = 60 * 30; // max amount of time to wait for players to respond to receiving the blueprint before setting it to null.
         private const int BLOCKS_PER_UPDATE = 10000; // how many blocks to update color/transparency to in an update
-        private const byte BLINK_FREQUENCY = 60; // ticks to wait between blink changes from on to off or vice versa
+        private const byte BLINK_FREQUENCY = 30; // ticks to wait between blink changes from on to off or vice versa
         private const int BLINK_MAX_BLOCKS = 1000; // ship no longer blinks after this many missing blocks
 
         public const float MIN_SCALE = 0.1f; // Scale slider min/max
@@ -1510,15 +1510,25 @@ namespace Digi.ProjectorPreview
                 }
                 else if(Settings.Status)
                 {
+                    int ok = CustomProjection.BlocksCount
+                           - blocksDamaged
+                           - blocksUnfinished
+                           - blocksMissing
+                           - blocksWrongType
+                           - blocksWrongColor
+                           - blocksWrongRotation
+                           - blocksHigherBuilt;
+
                     info.Append("Status Mode:").AppendLine();
-                    info.Append(" ").Append(CustomProjection.BlocksCount).Append("  Total").AppendLine();
+                    info.Append(" ").Append(ok).Append("  Match (black)").AppendLine();
                     info.Append(" ").Append(blocksDamaged).Append("  Damaged (yellow-orange)").AppendLine();
                     info.Append(" ").Append(blocksUnfinished).Append("  Unfinished (red-orange)").AppendLine();
                     info.Append(" ").Append(blocksMissing).Append("  Missing (blinking red)").AppendLine();
                     info.Append(" ").Append(blocksWrongType).Append("  Wrong type (light purple)").AppendLine();
                     info.Append(" ").Append(blocksWrongColor).Append("  Wrong color (dark purple)").AppendLine();
                     info.Append(" ").Append(blocksWrongRotation).Append("  Wrong rotation (teal)").AppendLine();
-                    info.Append(" ").Append(blocksBetterIntegrity).Append("  Better integrity (green)").AppendLine();
+                    info.Append(" ").Append(blocksHigherBuilt).Append("  Higher build percentage (green)").AppendLine();
+                    info.Append(" ").Append(CustomProjection.BlocksCount).Append("  Total").AppendLine();
 
                     if(blocksMissing > BLINK_MAX_BLOCKS)
                     {
@@ -1799,7 +1809,7 @@ namespace Digi.ProjectorPreview
             blocksWrongType = 0;
             blocksWrongColor = 0;
             blocksWrongRotation = 0;
-            blocksBetterIntegrity = 0;
+            blocksHigherBuilt = 0;
         }
 
         private void UpdateStatusMode()
@@ -1945,7 +1955,7 @@ namespace Digi.ProjectorPreview
 
             if(realIntegrity > projectedIntegrity)
             {
-                blocksBetterIntegrity++;
+                blocksHigherBuilt++;
                 return ProjectorPreviewMod.Instance.STATUS_COLOR_BETTER;
             }
 
