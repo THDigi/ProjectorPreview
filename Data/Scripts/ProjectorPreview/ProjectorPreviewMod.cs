@@ -613,6 +613,23 @@ namespace Digi.ProjectorPreview
             }
 
             {
+                var c = tc.CreateControl<IMyTerminalControlCombobox, IMyProjector>(CONTROL_PREFIX + "StatusPivot");
+                c.SupportsMultipleBlocks = false;
+                c.Title = MyStringId.GetOrCompute("Pivot for status");
+                c.Tooltip = MyStringId.GetOrCompute("Only needed for Status Mode and only if the blueprint has a different pivot or orientation than the real grid." +
+                                                    "\nThe list shows obviously-oriented block types, pick the one that is in the same spot as this projector is on this grid.");
+                c.Enabled = Projector.UI_StatusPivot_Enabled;
+                c.Setter = Projector.UI_StatusPivot_Setter;
+                c.Getter = Projector.UI_StatusPivot_Getter;
+                c.ComboBoxContent = Projector.UI_StatusPivot_Content;
+
+                ControlsAfterEverything.Add(c);
+                RefreshControls.Add(c);
+
+                tc.AddControl<IMyProjector>(c);
+            }
+
+            {
                 var c = tc.CreateControl<IMyTerminalControlCheckbox, IMyProjector>(CONTROL_PREFIX + "SeeThrough");
                 c.SupportsMultipleBlocks = true;
                 c.Title = MyStringId.GetOrCompute("See-through armor");

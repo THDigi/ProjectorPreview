@@ -34,6 +34,9 @@ namespace Digi.ProjectorPreview
         [ProtoMember(8)]
         public float LightIntensity = 1f;
 
+        [ProtoMember(9)]
+        public Vector3I? StatusPivot = null;
+
         // blueprint is stored separately to avoid hitches when saving these tiny settings
 
         public override string ToString()
@@ -45,7 +48,8 @@ Scale = {Math.Round(Scale, 4).ToString()}
 Offset = {Offset.X.ToString("N4")}, {Offset.Y.ToString("N4")}, {Offset.Z.ToString("N4")}
 RotateRad = {RotateRad.X.ToString("N4")}, {RotateRad.Y.ToString("N4")}, {RotateRad.Z.ToString("N4")}
 Spin = {Spin.ToString()}
-LightIntensity = {LightIntensity.ToString("N2")}";
+LightIntensity = {LightIntensity.ToString("N2")}
+StatusPivot = {StatusPivot?.ToString() ?? "(null)"}";
         }
     }
 

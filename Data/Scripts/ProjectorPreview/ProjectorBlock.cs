@@ -18,6 +18,7 @@ using VRage.Game.Entity;
 using VRage.Game.ModAPI;
 using VRage.ModAPI;
 using VRage.ObjectBuilders;
+using VRage.Utils;
 using VRageMath;
 using BlendTypeEnum = VRageRender.MyBillboard.BlendTypeEnum;
 
@@ -132,9 +133,22 @@ namespace Digi.ProjectorPreview
             {
                 Settings.Status = value;
                 blocksNeedRefresh = true;
+                RefreshControls();
 
                 if(!value)
                     ResetBlockStatus(resetColors: true);
+            }
+        }
+
+        public Vector3I? StatusPivot
+        {
+            get { return Settings.StatusPivot; }
+            set
+            {
+                Settings.StatusPivot = value;
+                blocksNeedRefresh = true;
+                ResetBlockStatus(resetColors: true);
+                RefreshControls();
             }
         }
 
@@ -211,6 +225,7 @@ namespace Digi.ProjectorPreview
             PreviewMode = newSettings.Enabled;
             Scale = newSettings.Scale;
             StatusMode = newSettings.Status;
+            StatusPivot = newSettings.StatusPivot;
             SeeThroughMode = newSettings.SeeThrough;
 
             for(int i = 0; i < 3; ++i)
@@ -710,6 +725,104 @@ namespace Digi.ProjectorPreview
             {
                 logic.StatusMode = value;
                 logic.PropertyChanged();
+            }
+        }
+        #endregion
+
+        #region UI - StatusPivotmethods
+        public static bool UI_StatusPivot_Enabled(IMyTerminalBlock block)
+        {
+            var logic = GetLogic(block);
+            return (logic == null ? false : logic.PreviewMode && logic.projector.IsWorking && logic.StatusMode);
+        }
+
+        public static long UI_StatusPivot_Getter(IMyTerminalBlock block)
+        {
+            var logic = GetLogic(block);
+            if(logic == null)
+                return 0;
+
+            if(!logic.StatusPivot.HasValue)
+                return 0;
+
+            if(logic.CustomProjection == null)
+                return 0;
+
+            var slim = logic.CustomProjection.GetCubeBlock(logic.StatusPivot.Value) as IMySlimBlock;
+            return slim?.FatBlock?.EntityId ?? 0;
+        }
+
+        public static void UI_StatusPivot_Setter(IMyTerminalBlock block, long value)
+        {
+            var logic = GetLogic(block);
+            if(logic == null)
+                return;
+
+            if(value == 0)
+            {
+                logic.StatusPivot = null;
+                logic.PropertyChanged();
+                return;
+            }
+
+            if(logic.CustomProjection == null)
+                return;
+
+            var target = MyEntities.GetEntityById(value) as IMyCubeBlock;
+            if(target == null || logic.CustomProjection != target.CubeGrid)
+                return;
+
+            logic.StatusPivot = target.Min;
+            logic.PropertyChanged();
+        }
+
+        static readonly HashSet<MyObjectBuilderType> PivotTypes = new HashSet<MyObjectBuilderType>()
+        {
+            typeof(MyObjectBuilder_Projector),
+            typeof(MyObjectBuilder_Cockpit),
+            typeof(MyObjectBuilder_RemoteControl),
+            typeof(MyObjectBuilder_FlightMovementBlock),
+            typeof(MyObjectBuilder_PathRecorderBlock),
+            // what other blocks have very clear orientation...
+        };
+
+        public static void UI_StatusPivot_Content(List<MyTerminalControlComboBoxItem> list)
+        {
+            var projector = ProjectorPreviewMod.Instance.ViewingTerminalOf;
+            if(projector == null)
+                return;
+
+            var logic = GetLogic(projector);
+            if(logic == null)
+                return;
+
+            if(logic.CustomProjection == null)
+            {
+                list.Add(new MyTerminalControlComboBoxItem()
+                {
+                    Key = 0,
+                    Value = MyStringId.GetOrCompute("(No projection)"),
+                });
+                return;
+            }
+
+            list.Add(new MyTerminalControlComboBoxItem()
+            {
+                Key = 0,
+                Value = MyStringId.GetOrCompute("*None*"),
+            });
+
+            foreach(var block in logic.CustomProjection.GetFatBlocks())
+            {
+                if(PivotTypes.Contains(block.BlockDefinition.Id.TypeId))
+                {
+                    var tb = block as IMyTerminalBlock;
+                    list.Add(new MyTerminalControlComboBoxItem()
+                    {
+                        Key = block.EntityId,
+                        Value = MyStringId.GetOrCompute(tb?.CustomName ?? block.DefinitionDisplayNameText),
+                    });
+                }
             }
         }
         #endregion
@@ -1572,6 +1685,8 @@ namespace Digi.ProjectorPreview
                     light = null;
                 }
             }
+
+            Settings.StatusPivot = null;
         }
 
         public override void UpdateAfterSimulation10()
@@ -1861,6 +1976,30 @@ namespace Digi.ProjectorPreview
             var max = Math.Min(blockIndex + BLOCKS_PER_UPDATE, blocksCount);
             int i = 0;
 
+            IMyCubeBlock pivotInReal = projector;
+            IMyCubeBlock pivotInProjector = null;
+
+            if(StatusPivot.HasValue)
+            {
+                var slim = CustomProjection.GetCubeBlock(StatusPivot.Value) as IMySlimBlock;
+                if(slim?.FatBlock != null && slim.CubeGrid == CustomProjection)
+                {
+                    pivotInProjector = slim.FatBlock;
+                }
+            }
+
+            bool doTransforms = false;
+            MatrixI localToReal = default(MatrixI);
+            MatrixI fakeToLocal = default(MatrixI);
+
+            if(pivotInProjector != null)
+            {
+                localToReal = new MatrixI(pivotInReal.Position, pivotInReal.Orientation.Forward, pivotInReal.Orientation.Up);
+                MatrixI pivotFake = new MatrixI(pivotInProjector.Position, pivotInProjector.Orientation.Forward, pivotInProjector.Orientation.Up);
+                MatrixI.Invert(ref pivotFake, out fakeToLocal);
+                doTransforms = true;
+            }
+
             foreach(IMySlimBlock projectedSlim in CustomProjection.GetBlocks())
             {
                 if(++i <= blockIndex)
@@ -1870,7 +2009,7 @@ namespace Digi.ProjectorPreview
                 {
                     bool highlight;
                     bool blink;
-                    var color = GetBlockStatusColor(projectedSlim, out highlight, out blink);
+                    var color = GetBlockStatusColor(projectedSlim, doTransforms, ref localToReal, ref fakeToLocal, out highlight, out blink);
                     SetTransparencyAndColor(projectedSlim, color, highlight, blink);
                 }
                 else
@@ -1883,49 +2022,44 @@ namespace Digi.ProjectorPreview
             }
         }
 
-        private Vector3 GetBlockStatusColor(IMySlimBlock projectedSlim, out bool highlight, out bool blink)
+        private Vector3 GetBlockStatusColor(IMySlimBlock projectedSlim, bool doTransforms, ref MatrixI localToReal, ref MatrixI fakeToLocal, out bool highlight, out bool blink)
         {
             highlight = true; // true for all statuses except normal.
             blink = false; // only blink on very specific statuses
-            bool wrongRotation = false;
+            bool isWrongRotation = false;
 
-            var projectedSlimMin = projectedSlim.Min;
-            IMySlimBlock realSlim = null;
+            var projectedDef = (MyCubeBlockDefinition)projectedSlim.BlockDefinition;
+            var minTransformed = doTransforms ? Vector3I.Transform(Vector3I.Transform(projectedSlim.Min, ref fakeToLocal), ref localToReal) : projectedSlim.Min;
 
-            if(IsInBounds(projector.CubeGrid, ref projectedSlimMin)) // avoid even looking for the real block if its position would be outside of grid boundary
+            IMySlimBlock realSlim = projector.CubeGrid.GetCubeBlock(minTransformed);
+            if(realSlim == null)
             {
-                realSlim = projector.CubeGrid.GetCubeBlock(projectedSlimMin);
+                var size = projectedDef.Size;
 
-                if(realSlim == null)
+                // if the block is larger than 1x1x1, then check the rest of its slots for obstructions
+                if(size.X > 1 || size.Y > 1 || size.Z > 1)
                 {
-                    var size = ((MyCubeBlockDefinition)projectedSlim.BlockDefinition).Size;
+                    var max = doTransforms ? Vector3I.Transform(Vector3I.Transform(projectedSlim.Max, ref fakeToLocal), ref localToReal) : projectedSlim.Max;
+                    var iterator = new Vector3I_RangeIterator(ref minTransformed, ref max);
 
-                    // if the block is larger than 1x1x1, then check the rest of its slots for obstructions
-                    if(size.X > 1 || size.Y > 1 || size.Z > 1)
+                    while(iterator.IsValid())
                     {
-                        var projectedSlimMax = projectedSlim.Max;
-                        var iterator = new Vector3I_RangeIterator(ref projectedSlimMin, ref projectedSlimMax);
-
-                        while(iterator.IsValid())
+                        IMySlimBlock check = projector.CubeGrid.GetCubeBlock(iterator.Current);
+                        if(check != null)
                         {
-                            realSlim = projector.CubeGrid.GetCubeBlock(iterator.Current);
-
-                            if(realSlim != null)
+                            if(check.BlockDefinition.Id == projectedSlim.BlockDefinition.Id)
                             {
-                                if(realSlim.BlockDefinition.Id == projectedSlim.BlockDefinition.Id)
-                                {
-                                    wrongRotation = true;
-                                    break;
-                                }
-                                else
-                                {
-                                    blocksWrongType++;
-                                    return ProjectorPreviewMod.Instance.STATUS_COLOR_WRONG_TYPE;
-                                }
+                                isWrongRotation = true;
+                                break;
                             }
-
-                            iterator.MoveNext();
+                            else
+                            {
+                                blocksWrongType++;
+                                return ProjectorPreviewMod.Instance.STATUS_COLOR_WRONG_TYPE;
+                            }
                         }
+
+                        iterator.MoveNext();
                     }
                 }
             }
@@ -1943,21 +2077,44 @@ namespace Digi.ProjectorPreview
                 return ProjectorPreviewMod.Instance.STATUS_COLOR_WRONG_TYPE;
             }
 
-            if(!wrongRotation)
-            {
-                wrongRotation = (realSlim.Orientation.Forward != projectedSlim.Orientation.Forward
-                              || realSlim.Orientation.Up != projectedSlim.Orientation.Up
-                              || realSlim.Min != projectedSlimMin);
-            }
-
-            float realIntegrity = realSlim.Integrity;
-            float projectedIntegrity = projectedSlim.Integrity;
-
-            if(realIntegrity > projectedIntegrity)
+            if(realSlim.BuildLevelRatio > projectedSlim.BuildLevelRatio)
             {
                 blocksHigherBuilt++;
                 return ProjectorPreviewMod.Instance.STATUS_COLOR_BETTER;
             }
+
+            if(!isWrongRotation)
+            {
+                isWrongRotation = realSlim.Min != minTransformed;
+            }
+
+            if(!isWrongRotation)
+            {
+                if(projectedDef.CubeDefinition != null && projectedDef.CubeDefinition.CubeTopology == MyCubeTopology.Box)
+                {
+                    // this one doesn't store orientation so it can't be wrong, skip!
+                }
+                else
+                {
+                    Base6Directions.Direction fw, up;
+
+                    if(doTransforms)
+                    {
+                        fw = Base6Directions.GetDirection(Vector3I.TransformNormal(Vector3I.TransformNormal(Base6Directions.GetIntVector(projectedSlim.Orientation.Forward), ref fakeToLocal), ref localToReal));
+                        up = Base6Directions.GetDirection(Vector3I.TransformNormal(Vector3I.TransformNormal(Base6Directions.GetIntVector(projectedSlim.Orientation.Up), ref fakeToLocal), ref localToReal));
+                    }
+                    else
+                    {
+                        fw = projectedSlim.Orientation.Forward;
+                        up = projectedSlim.Orientation.Up;
+                    }
+
+                    isWrongRotation = (realSlim.Orientation.Forward != fw || realSlim.Orientation.Up != up);
+                }
+            }
+
+            float realIntegrity = realSlim.Integrity;
+            float projectedIntegrity = projectedSlim.Integrity;
 
             if(realIntegrity < projectedIntegrity)
             {
@@ -1971,7 +2128,7 @@ namespace Digi.ProjectorPreview
                 {
                     blocksUnfinished++;
 
-                    if(wrongRotation)
+                    if(isWrongRotation)
                     {
                         blocksWrongRotation++;
                         return ProjectorPreviewMod.Instance.STATUS_COLOR_WRONG_ROTATION;
@@ -2002,7 +2159,7 @@ namespace Digi.ProjectorPreview
                 }
             }
 
-            if(wrongRotation)
+            if(isWrongRotation)
             {
                 blocksWrongRotation++;
                 return ProjectorPreviewMod.Instance.STATUS_COLOR_WRONG_ROTATION;
@@ -2012,7 +2169,7 @@ namespace Digi.ProjectorPreview
             {
                 MyTuple<IMySlimBlock, Vector3> originalColor;
 
-                if(originalColors.TryGetValue(projectedSlimMin, out originalColor) && Vector3.DistanceSquared(realSlim.ColorMaskHSV, originalColor.Item2) >= 0.0001f)
+                if(originalColors.TryGetValue(projectedSlim.Min, out originalColor) && Vector3.DistanceSquared(realSlim.ColorMaskHSV, originalColor.Item2) > 0.01f)
                 {
                     blocksWrongColor++;
                     return ProjectorPreviewMod.Instance.STATUS_COLOR_WRONG_COLOR;
