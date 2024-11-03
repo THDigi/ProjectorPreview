@@ -11,7 +11,7 @@ namespace Digi.ProjectorPreview
     public class ProjectorPreviewModSettings
     {
         [ProtoMember(1)]
-        public bool Enabled = false;
+        public bool PreviewMode = false;
 
         [ProtoMember(2)]
         public bool Status = false;
@@ -41,7 +41,7 @@ namespace Digi.ProjectorPreview
 
         public override string ToString()
         {
-            return $@"Enabled = {Enabled.ToString()}
+            return $@"PreviewMode = {PreviewMode.ToString()}
 Status = {Status.ToString()}
 SeeThrough = {SeeThrough.ToString()}
 Scale = {Math.Round(Scale, 4).ToString()}

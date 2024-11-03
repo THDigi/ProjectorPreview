@@ -91,7 +91,7 @@ namespace Digi.ProjectorPreview
             Instance = this;
             Log.ModName = "Projector Preview";
 
-            Log.Info("Mod version: 5"); // HACK: for easy check if the correct mod version is installed, increment on updates
+            Log.Info("Mod version: 6"); // HACK: for easy check if the correct mod version is installed, increment on updates
 
             Debug = MyAPIGateway.Utilities.FileExistsInLocalStorage("debug", typeof(ProjectorPreviewMod));
             if(Debug)
@@ -278,7 +278,7 @@ namespace Digi.ProjectorPreview
                         logic.RemoveBlueprints_Receiver(bytes, data.Sender);
                         break;
                     case PacketType.RECEIVED_BP:
-                        logic.PlayerReceivedBP(data.Sender);
+                        logic.PlayerConfirmedBP(data.Sender);
                         break;
                     case PacketType.USE_THIS_AS_IS:
                         logic.UseThisShip_Receiver(false);
