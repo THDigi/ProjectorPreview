@@ -2048,29 +2048,36 @@ namespace Digi.ProjectorPreview
             var max = Math.Min(blockIndex + BLOCKS_PER_UPDATE, blocksCount);
             int i = 0;
 
-            IMyCubeBlock pivotInReal = projector;
-            IMyCubeBlock pivotInProjector = null;
+            IMyCubeBlock realPivot = projector;
+            IMyCubeBlock projectedPivot = null;
 
             if(StatusPivot.HasValue)
             {
                 var slim = CustomProjection.GetCubeBlock(StatusPivot.Value) as IMySlimBlock;
                 if(slim?.FatBlock != null && slim.CubeGrid == CustomProjection)
                 {
-                    pivotInProjector = slim.FatBlock;
+                    projectedPivot = slim.FatBlock;
                 }
             }
 
             bool doTransforms = false;
-            MatrixI localToReal = default(MatrixI);
-            MatrixI fakeToLocal = default(MatrixI);
+            MatrixI realMatrix = default(MatrixI);
+            MatrixI realMatrixInv = default(MatrixI);
+            MatrixI projectedMatrix = default(MatrixI);
+            MatrixI projectedMatrixInv = default(MatrixI);
 
-            if(pivotInProjector != null)
+            if(projectedPivot != null)
             {
-                localToReal = new MatrixI(pivotInReal.Position, pivotInReal.Orientation.Forward, pivotInReal.Orientation.Up);
-                MatrixI pivotFake = new MatrixI(pivotInProjector.Position, pivotInProjector.Orientation.Forward, pivotInProjector.Orientation.Up);
-                MatrixI.Invert(ref pivotFake, out fakeToLocal);
+                realMatrix = new MatrixI(realPivot.Position, realPivot.Orientation.Forward, realPivot.Orientation.Up);
+                projectedMatrix = new MatrixI(projectedPivot.Position, projectedPivot.Orientation.Forward, projectedPivot.Orientation.Up);
+
+                MatrixI.Invert(ref realMatrix, out realMatrixInv);
+                MatrixI.Invert(ref projectedMatrix, out projectedMatrixInv);
+
                 doTransforms = true;
             }
+
+            FirstMismatch = true;
 
             foreach(IMySlimBlock projectedSlim in CustomProjection.GetBlocks())
             {
@@ -2081,7 +2088,7 @@ namespace Digi.ProjectorPreview
                 {
                     bool highlight;
                     bool blink;
-                    var color = GetBlockStatusColor(projectedSlim, doTransforms, ref localToReal, ref fakeToLocal, out highlight, out blink);
+                    var color = GetBlockStatusColor(projectedSlim, doTransforms, ref projectedMatrixInv, ref realMatrix, ref realMatrixInv, out highlight, out blink);
                     SetTransparencyAndColor(projectedSlim, color, highlight, blink);
                 }
                 else
@@ -2094,24 +2101,28 @@ namespace Digi.ProjectorPreview
             }
         }
 
-        private Vector3 GetBlockStatusColor(IMySlimBlock projectedSlim, bool doTransforms, ref MatrixI localToReal, ref MatrixI fakeToLocal, out bool highlight, out bool blink)
+        bool FirstMismatch;
+
+        Vector3 GetBlockStatusColor(IMySlimBlock projectedSlim, bool doTransforms, ref MatrixI projectedMatrixInv, ref MatrixI realMatrix, ref MatrixI realMatrixInv, out bool highlight, out bool blink)
         {
             highlight = true; // true for all statuses except normal.
             blink = false; // only blink on very specific statuses
             bool isWrongRotation = false;
 
+
             var projectedDef = (MyCubeBlockDefinition)projectedSlim.BlockDefinition;
-            var minTransformed = doTransforms ? Vector3I.Transform(Vector3I.Transform(projectedSlim.Min, ref fakeToLocal), ref localToReal) : projectedSlim.Min;
+            Vector3I blockSize = projectedDef.Size;
+            bool isMultiCell = blockSize.X > 1 || blockSize.Y > 1 || blockSize.Z > 1;
+
+            var minTransformed = doTransforms ? Vector3I.Transform(Vector3I.Transform(projectedSlim.Min, ref projectedMatrixInv), ref realMatrix) : projectedSlim.Min;
 
             IMySlimBlock realSlim = projector.CubeGrid.GetCubeBlock(minTransformed);
             if(realSlim == null)
             {
-                var size = projectedDef.Size;
-
-                // if the block is larger than 1x1x1, then check the rest of its slots for obstructions
-                if(size.X > 1 || size.Y > 1 || size.Z > 1)
+                // if the block is larger than 1x1x1, then check the rest of its slots if the block is in any of them
+                if(isMultiCell)
                 {
-                    var max = doTransforms ? Vector3I.Transform(Vector3I.Transform(projectedSlim.Max, ref fakeToLocal), ref localToReal) : projectedSlim.Max;
+                    var max = doTransforms ? Vector3I.Transform(Vector3I.Transform(projectedSlim.Max, ref projectedMatrixInv), ref realMatrix) : projectedSlim.Max;
                     var iterator = new Vector3I_RangeIterator(ref minTransformed, ref max);
 
                     while(iterator.IsValid())
@@ -2134,10 +2145,13 @@ namespace Digi.ProjectorPreview
                         iterator.MoveNext();
                     }
                 }
-            }
 
-            if(realSlim == null)
-            {
+                if(isWrongRotation)
+                {
+                    blocksWrongRotation++;
+                    return ProjectorPreviewMod.Instance.STATUS_COLOR_WRONG_ROTATION;
+                }
+
                 blink = true;
                 blocksMissing++;
                 return ProjectorPreviewMod.Instance.STATUS_COLOR_MISSING;
@@ -2155,33 +2169,59 @@ namespace Digi.ProjectorPreview
                 return ProjectorPreviewMod.Instance.STATUS_COLOR_BETTER;
             }
 
-            if(!isWrongRotation)
+            if(isMultiCell && !isWrongRotation && !MyAPIGateway.Input.IsAnyCtrlKeyPressed())
             {
-                isWrongRotation = realSlim.Min != minTransformed;
+                var posTransformed = doTransforms ? Vector3I.Transform(Vector3I.Transform(projectedSlim.Position, ref projectedMatrixInv), ref realMatrix) : projectedSlim.Position;
+                isWrongRotation = realSlim.Position != posTransformed;
             }
 
             if(!isWrongRotation)
             {
-                if(projectedDef.CubeDefinition != null && projectedDef.CubeDefinition.CubeTopology == MyCubeTopology.Box)
+                bool supportsRotation = projectedDef.CubeDefinition == null || MyCubeGridDefinitions.GetCubeRotationOptions(projectedDef) != MyRotationOptionsEnum.None;
+                if(supportsRotation)
                 {
-                    // this one doesn't store orientation so it can't be wrong, skip!
-                }
-                else
-                {
-                    Base6Directions.Direction fw, up;
-
+                    // TODO fix this not working for all blocks...
                     if(doTransforms)
                     {
-                        fw = Base6Directions.GetDirection(Vector3I.TransformNormal(Vector3I.TransformNormal(Base6Directions.GetIntVector(projectedSlim.Orientation.Forward), ref fakeToLocal), ref localToReal));
-                        up = Base6Directions.GetDirection(Vector3I.TransformNormal(Vector3I.TransformNormal(Base6Directions.GetIntVector(projectedSlim.Orientation.Up), ref fakeToLocal), ref localToReal));
+                        Vector3I fwVec = Base6Directions.GetIntVector(projectedSlim.Orientation.Forward);
+                        Vector3I upVec = Base6Directions.GetIntVector(projectedSlim.Orientation.Up);
+
+                        var fw = Base6Directions.GetDirection(Vector3I.TransformNormal(Vector3I.TransformNormal(fwVec, ref projectedMatrixInv), ref realMatrix));
+                        var up = Base6Directions.GetDirection(Vector3I.TransformNormal(Vector3I.TransformNormal(upVec, ref projectedMatrixInv), ref realMatrix));
+
+                        isWrongRotation = (realSlim.Orientation.Forward != fw || realSlim.Orientation.Up != up);
+
+                        //if(MyAPIGateway.Input.IsAnyShiftKeyPressed())
+                        //{
+                        //    Vector3I realFw = Vector3I.TransformNormal(Base6Directions.GetIntVector(realSlim.Orientation.Forward), ref realMatrixInv);
+                        //    Vector3I fakeFw = Vector3I.TransformNormal(Base6Directions.GetIntVector(projectedSlim.Orientation.Forward), ref projectedMatrixInv);
+                        //
+                        //    Vector3I realUp = Vector3I.TransformNormal(Base6Directions.GetIntVector(realSlim.Orientation.Up), ref realMatrixInv);
+                        //    Vector3I fakeUp = Vector3I.TransformNormal(Base6Directions.GetIntVector(projectedSlim.Orientation.Up), ref projectedMatrixInv);
+                        //
+                        //    isWrongRotation = (realFw != fakeFw || realUp != fakeUp);
+                        //}
                     }
                     else
                     {
-                        fw = projectedSlim.Orientation.Forward;
-                        up = projectedSlim.Orientation.Up;
+                        isWrongRotation = (realSlim.Orientation.Forward != projectedSlim.Orientation.Forward || realSlim.Orientation.Up != projectedSlim.Orientation.Up);
                     }
 
-                    isWrongRotation = (realSlim.Orientation.Forward != fw || realSlim.Orientation.Up != up);
+                    //if(isWrongRotation)
+                    //{
+                    //    if(FirstMismatch)
+                    //    {
+                    //        FirstMismatch = false;
+                    //        Vector3I realFw = Vector3I.TransformNormal(Base6Directions.GetIntVector(realSlim.Orientation.Forward), ref realMatrixInv);
+                    //        Vector3I fakeFw = Vector3I.TransformNormal(Base6Directions.GetIntVector(projectedSlim.Orientation.Forward), ref projectedMatrixInv);
+                    //
+                    //        Vector3I realUp = Vector3I.TransformNormal(Base6Directions.GetIntVector(realSlim.Orientation.Up), ref realMatrixInv);
+                    //        Vector3I fakeUp = Vector3I.TransformNormal(Base6Directions.GetIntVector(projectedSlim.Orientation.Up), ref projectedMatrixInv);
+                    //
+                    //        MyAPIGateway.Utilities.ShowNotification($"[{realSlim.BlockDefinition.Id}]  fw = {realFw} vs {fakeFw}; up = {realUp} vs {fakeUp}", 160);
+                    //    }
+                    //    return Color.Pink.ColorToHSVDX11(); // DEBUG
+                    //}
                 }
             }
 
